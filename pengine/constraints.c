@@ -996,6 +996,9 @@ order_rsc_sets(const char *id, xmlNode * set1, xmlNode * set2, enum pe_order_kin
     const char *sequential_1 = crm_element_value(set1, "sequential");
     const char *sequential_2 = crm_element_value(set2, "sequential");
 
+    const char *ordered_1 = crm_element_value(set1, "ordered");
+    gboolean ordered_rule = ordered_1 ? crm_is_true(ordered_1) : TRUE;
+
     enum pe_ordering flags = pe_order_none;
 
     if (action_1 == NULL) {
@@ -1012,6 +1015,60 @@ order_rsc_sets(const char *id, xmlNode * set1, xmlNode * set2, enum pe_order_kin
         action_1 = invert_action(action_1);
         action_2 = invert_action(action_2);
         flags = get_flags(id, kind, action_2, action_1, TRUE);
+    }
+
+    /* If we have an un-ordered first set, whether it is sequential or not is irrelevant in regards to set2. */
+    if (!ordered_rule) {
+        int unordered_flags = pe_order_runnable_left_optional;
+        char *unordered_key = generate_op_key(ID(set1), CRM_OP_UNORDERED_SET, 0);
+        action_t *unordered_action;
+
+        unordered_action  = custom_action(NULL,
+            crm_strdup(unordered_key),
+            CRM_OP_UNORDERED_SET,
+            NULL,
+            TRUE,
+            TRUE,
+            data_set);
+        update_action_flags(unordered_action, pe_action_pseudo);
+        update_action_flags(unordered_action, pe_action_reset_runnable_on_update);
+
+        for (xml_rsc = __xml_first_child(set1); xml_rsc != NULL; xml_rsc = __xml_next(xml_rsc)) {
+            xmlNode *xml_rsc_2 = NULL;
+            if (!crm_str_eq((const char *)xml_rsc->name, XML_TAG_RESOURCE_REF, TRUE)) {
+                continue;
+            }
+
+            EXPAND_CONSTRAINT_IDREF(id, rsc_1, ID(xml_rsc));
+            custom_action_order(rsc_1,
+                generate_op_key(rsc_1->id, action_1, 0),
+                NULL,
+                NULL,
+                crm_strdup(unordered_key),
+                unordered_action,
+                unordered_flags,
+                data_set);
+
+            for (xml_rsc_2 = __xml_first_child(set2); xml_rsc_2 != NULL; xml_rsc_2 = __xml_next(xml_rsc_2)) {
+                if (!crm_str_eq((const char *)xml_rsc_2->name, XML_TAG_RESOURCE_REF, TRUE)) {
+                    continue;
+                }
+
+                EXPAND_CONSTRAINT_IDREF(id, rsc_2, ID(xml_rsc_2));
+                custom_action_order(
+                    NULL,
+                    crm_strdup(unordered_key),
+                    unordered_action,
+                    rsc_2,
+                    generate_op_key(rsc_2->id, action_2, 0),
+                    NULL,
+                    flags,
+                    data_set);
+            }
+        }
+
+        crm_free(unordered_key);
+        return TRUE;
     }
 
     if (crm_is_true(sequential_1)) {
@@ -1098,6 +1155,7 @@ order_rsc_sets(const char *id, xmlNode * set1, xmlNode * set2, enum pe_order_kin
             }
         }
     }
+
     return TRUE;
 }
 
