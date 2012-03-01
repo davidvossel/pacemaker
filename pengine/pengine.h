@@ -57,7 +57,7 @@ enum pe_ordering {
 
     pe_order_runnable_left = 0x100,     /* 'then' requires 'first' to be runnable */
     pe_order_runnable_left_optional = 0x200, /* 'then' is runnable if 'first' is also runnable,
-                                              * but if 'first' is not runnable 'then' is not effected.*/
+                                              * but if 'first' is not runnable 'then' is not affected.*/
 
     pe_order_restart = 0x1000,  /* stop-start constraint */
     pe_order_stonith_stop = 0x2000,     /* only applies if the action is non-pseudo */
