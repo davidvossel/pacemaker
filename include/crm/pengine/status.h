@@ -191,7 +191,7 @@ enum pe_action_flags {
     pe_action_clear = 0x00400,
     pe_action_dangle = 0x00800,
 
-    /* always clear the runnable before updating this action */
+    /* always clear the runnable flag before updating this action */
     pe_action_reset_runnable_on_update = 0x01000,
 };
 

@@ -997,7 +997,7 @@ order_rsc_sets(const char *id, xmlNode * set1, xmlNode * set2, enum pe_order_kin
     const char *sequential_2 = crm_element_value(set2, "sequential");
 
     const char *ordered_1 = crm_element_value(set1, "ordered");
-    gboolean ordered_rule = ordered_1 ? crm_is_true(ordered_1) : TRUE;
+    gboolean ordered_bool = ordered_1 ? crm_is_true(ordered_1) : TRUE;
 
     enum pe_ordering flags = pe_order_none;
 
@@ -1017,8 +1017,8 @@ order_rsc_sets(const char *id, xmlNode * set1, xmlNode * set2, enum pe_order_kin
         flags = get_flags(id, kind, action_2, action_1, TRUE);
     }
 
-    /* If we have an un-ordered first set, whether it is sequential or not is irrelevant in regards to set2. */
-    if (!ordered_rule) {
+    /* If we have an un-ordered set1, whether it is sequential or not is irrelevant in regards to set2. */
+    if (!ordered_bool) {
         int unordered_flags = pe_order_runnable_left_optional;
         char *unordered_key = generate_op_key(ID(set1), CRM_OP_UNORDERED_SET, 0);
         action_t *unordered_action;
@@ -1040,6 +1040,9 @@ order_rsc_sets(const char *id, xmlNode * set1, xmlNode * set2, enum pe_order_kin
             }
 
             EXPAND_CONSTRAINT_IDREF(id, rsc_1, ID(xml_rsc));
+
+            /* Add an ordering constraint between every element in set1 and the pseudo action.
+             * If any action in set1 is runnable the pseudo action will be runnable. */
             custom_action_order(rsc_1,
                 generate_op_key(rsc_1->id, action_1, 0),
                 NULL,
@@ -1055,6 +1058,9 @@ order_rsc_sets(const char *id, xmlNode * set1, xmlNode * set2, enum pe_order_kin
                 }
 
                 EXPAND_CONSTRAINT_IDREF(id, rsc_2, ID(xml_rsc_2));
+
+                /* Add an ordering constraint between the pseudo action and every element in set2.
+                 * If the pseudo action is runnable, every action in set2 will be runnable */
                 custom_action_order(
                     NULL,
                     crm_strdup(unordered_key),
