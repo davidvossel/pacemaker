@@ -2075,11 +2075,12 @@ unpack_rsc_op(resource_t * rsc, node_t * node, xmlNode * xml_op, GListPtr next,
                         crm_trace("Marking active on %s %p %d", migrate_target, target,
                                   target->details->online);
                         if (target && target->details->online) {
-                            /* TODO: One day, figure out how to complete the migration
-                             * For now, consider it active in both locations so it gets stopped everywhere
-                             */
+                            /* If we make it here we have a partial migration.  The migrate_to
+                             * has completed but the migrate_from on the target has not. Hold on
+                             * to the target on the resource. Later on if we detect that the resource
+                             * is still going to run on that target, we may continue the migration */
                             native_add_running(rsc, target, data_set);
-
+                            rsc->partial_migration_target = target;
                         } else {
                             /* Consider it failed here - forces a restart, prevents migration */
                             set_bit_inplace(rsc->flags, pe_rsc_failed);
