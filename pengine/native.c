@@ -2844,16 +2844,15 @@ MigrateRsc(resource_t * rsc, action_t *stop, action_t *start, pe_working_set_t *
      */
     from->priority = INFINITY;
 
-    then = from;
     if (!partial) {
         order_actions(to, from, pe_order_optional);
         add_hash_param(to->meta, XML_LRM_ATTR_MIGRATE_SOURCE, stop->node->details->uname);
         add_hash_param(to->meta, XML_LRM_ATTR_MIGRATE_TARGET, start->node->details->uname);
-        then = to;
     }
 
-    order_actions(done, then, pe_order_optional);
+    then = to ? to : from;
     order_actions(from, stop, pe_order_optional);
+    order_actions(done, then, pe_order_optional);
     add_hash_param(from->meta, XML_LRM_ATTR_MIGRATE_SOURCE, stop->node->details->uname);
     add_hash_param(from->meta, XML_LRM_ATTR_MIGRATE_TARGET, start->node->details->uname);
 
@@ -2929,7 +2928,7 @@ MigrateRsc(resource_t * rsc, action_t *stop, action_t *start, pe_working_set_t *
         order_actions(from, other, other_w->type);
     }
 #endif
-    /* migrate_to also needs anything that the stop needed to have completed too */
+    /* migrate 'then' action also needs anything that the stop needed to have completed too */
     for (gIter = stop->actions_before; gIter != NULL; gIter = gIter->next) {
         action_wrapper_t *other_w = (action_wrapper_t *) gIter->data;
 
@@ -2945,7 +2944,7 @@ MigrateRsc(resource_t * rsc, action_t *stop, action_t *start, pe_working_set_t *
         order_actions(other, then, other_w->type);
     }
 
-    /* migrate_to also needs anything that the start needed to have completed too */
+    /* migrate 'then' action also needs anything that the start needed to have completed too */
     for (gIter = start->actions_before; gIter != NULL; gIter = gIter->next) {
         action_wrapper_t *other_w = (action_wrapper_t *) gIter->data;
 
