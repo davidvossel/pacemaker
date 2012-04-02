@@ -3026,7 +3026,7 @@ rsc_migrate_reload(resource_t * rsc, pe_working_set_t * data_set)
     crm_trace("Processing %s", rsc->id);
 
     if (rsc->partial_migration_target) {
-        start = get_first_named_action(rsc, RSC_STOP, TRUE, rsc->partial_migration_target);
+        start = get_first_named_action(rsc, RSC_START, TRUE, rsc->partial_migration_target);
         stop = get_first_named_action(rsc, RSC_STOP, TRUE, rsc->partial_migration_source);
         if (start && stop) {
             partial = TRUE;
