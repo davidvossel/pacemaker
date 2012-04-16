@@ -95,9 +95,37 @@ native_add_running(resource_t * rsc, node_t * node, pe_working_set_t * data_set)
 
 extern void force_non_unique_clone(resource_t * rsc, const char *rid, pe_working_set_t * data_set);
 
+static void update_parent_stonith_flags(resource_t *rsc)
+{
+    resource_t *parent;
+
+    if (rsc->stonith_flags == rsc_stonith_unknown) {
+        return;
+    }
+
+    for (parent = rsc->parent; parent != NULL; parent = parent->parent) {
+        switch (parent->stonith_flags) {
+        case rsc_stonith_unknown:
+            parent->stonith_flags = rsc->stonith_flags;
+            break;
+        case rsc_stonith_true:
+            parent->stonith_flags =
+                (rsc->stonith_flags == rsc_stonith_true) ? rsc_stonith_true : rsc_stonith_mixed;
+            break;
+        case rsc_stonith_false:
+            parent->stonith_flags =
+                (rsc->stonith_flags == rsc_stonith_false) ? rsc_stonith_false : rsc_stonith_mixed;
+            break;
+        case rsc_stonith_mixed:
+            break;
+        }
+    }
+}
+
 gboolean
 native_unpack(resource_t * rsc, pe_working_set_t * data_set)
 {
+    const char *class = crm_element_value(rsc->xml, XML_AGENT_ATTR_CLASS);
     native_variant_data_t *native_data = NULL;
 
     crm_trace("Processing resource %s...", rsc->id);
@@ -105,16 +133,22 @@ native_unpack(resource_t * rsc, pe_working_set_t * data_set)
     crm_malloc0(native_data, sizeof(native_variant_data_t));
 
     if (is_set(rsc->flags, pe_rsc_unique) && rsc->parent) {
-        const char *class = crm_element_value(rsc->xml, XML_AGENT_ATTR_CLASS);
-
+        resource_t *top = uber_parent(rsc);
         if (safe_str_eq(class, "lsb")) {
-            resource_t *top = uber_parent(rsc);
-
             force_non_unique_clone(top, rsc->id, data_set);
         }
     }
 
     rsc->variant_opaque = native_data;
+
+    if (safe_str_eq(class, "stonith")) {
+        rsc->stonith_flags = rsc_stonith_true;
+    } else if (class) {
+        rsc->stonith_flags = rsc_stonith_false;
+    }
+
+    update_parent_stonith_flags(rsc);
+
     return TRUE;
 }
 

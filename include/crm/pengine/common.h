@@ -54,6 +54,13 @@ enum action_tasks {
     stonith_node
 };
 
+enum rsc_stonith_flags {
+    rsc_stonith_unknown,
+    rsc_stonith_false,
+    rsc_stonith_true,
+    rsc_stonith_mixed
+};
+
 enum rsc_recovery_type {
     recovery_stop_start,
     recovery_stop_only,

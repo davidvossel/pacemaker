@@ -710,6 +710,27 @@ new_rsc_order(resource_t * lh_rsc, const char *lh_task,
     lh_key = generate_op_key(lh_rsc->id, lh_task, 0);
     rh_key = generate_op_key(rh_rsc->id, rh_task, 0);
 
+    if (lh_rsc && rh_rsc) {
+
+        if (lh_rsc->stonith_flags == rsc_stonith_mixed) {
+            crm_err("Order constraint, LH (%s) then RH (%s), can not be applied.  LH contains stonith resources mixed with other resource classes.",
+                lh_rsc->id, rh_rsc->id);
+            return -1;
+        } else if (rh_rsc->stonith_flags == rsc_stonith_mixed) {
+            crm_err("Order constraint, LH (%s) then RH (%s), can not be applied.  RH contains stonith resources mixed with other resource classes.",
+                lh_rsc->id, rh_rsc->id);
+            return -1;
+        } else if (lh_rsc->stonith_flags == rsc_stonith_true && (lh_rsc->stonith_flags != rh_rsc->stonith_flags)) {
+            crm_err("Order constraint, LH (%s) then RH (%s), can not be applied. LH is of class stonith and RH is not.",
+                lh_rsc->id, rh_rsc->id);
+            return -1;
+        } else if (rh_rsc->stonith_flags == rsc_stonith_true && (rh_rsc->stonith_flags != lh_rsc->stonith_flags)) {
+            crm_err("Order constraint, LH (%s) then RH (%s), can not be applied. RH is of class stonith and LH is not.",
+                lh_rsc->id, rh_rsc->id);
+            return -1;
+        }
+    }
+
     return custom_action_order(lh_rsc, lh_key, NULL, rh_rsc, rh_key, NULL, type, data_set);
 }
 

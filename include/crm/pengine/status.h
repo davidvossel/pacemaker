@@ -215,6 +215,7 @@ struct resource_s {
 
     enum rsc_recovery_type recovery_type;
     enum pe_restart restart_type;
+    enum rsc_stonith_flags stonith_flags;
 
     int priority;
     int stickiness;
