@@ -35,6 +35,7 @@
 #include <crm/msg_xml.h>
 #include <crm/common/ipc.h>
 #include <crm/common/cluster.h>
+#include <crm/common/mainloop.h>
 
 #include <crm/stonith-ng.h>
 #include <crm/stonith-ng-internal.h>
@@ -1070,7 +1071,15 @@ stonith_command(stonith_client_t *client, xmlNode *request, const char *remote)
     crm_debug("Processing %s%s from %s (%16x)", op, is_reply?" reply":"",
 	      client?client->name:remote, call_options);
 
-    if(crm_str_eq(op, STONITH_OP_EXEC, TRUE)) {
+    if(crm_str_eq(op, CRM_OP_REGISTER, TRUE)) {
+        xmlNode *reply = create_xml_node(NULL, "reply");
+        crm_xml_add(reply, F_STONITH_OPERATION, CRM_OP_REGISTER);
+        crm_xml_add(reply, F_STONITH_CLIENTID,  client->id);
+	crm_ipcs_send(client->channel, reply, FALSE);
+        free_xml(reply);
+        return;
+
+    } else if(crm_str_eq(op, STONITH_OP_EXEC, TRUE)) {
 	rc = stonith_device_action(request, &output);
 
     } else if(is_reply && crm_str_eq(op, STONITH_OP_QUERY, TRUE)) {
@@ -1091,6 +1100,7 @@ stonith_command(stonith_client_t *client, xmlNode *request, const char *remote)
 	
     } else if(crm_str_eq(op, T_STONITH_NOTIFY, TRUE)) {
 	const char *flag_name = NULL;
+        xmlNode *ack = create_xml_node(NULL, "ack");
 
 	flag_name = crm_element_value(request, F_STONITH_NOTIFY_ACTIVATE);
 	if(flag_name) {
@@ -1105,6 +1115,9 @@ stonith_command(stonith_client_t *client, xmlNode *request, const char *remote)
 		      flag_name, client->name, client->id);
 	    client->flags |= get_stonith_flag(flag_name);
 	}
+
+        crm_ipcs_send(client->channel, ack, FALSE);
+        free_xml(ack);
 	return;
 
     /* } else if(is_reply && crm_str_eq(op, STONITH_OP_FENCE, TRUE)) { */
@@ -1176,14 +1189,14 @@ stonith_command(stonith_client_t *client, xmlNode *request, const char *remote)
 	       client?client->name:remote, rc);
     
     if(is_reply || rc == stonith_pending) {
-	/* Nothing (yet) */	
+	/* Nothing (yet) */
 	
     } else if(remote) {
 	reply = stonith_construct_reply(request, output, data, rc);
 	send_cluster_message(remote, crm_msg_stonith_ng, reply, FALSE);
 	free_xml(reply);
 
-    } else if(rc <= 0 || always_reply) {
+    } else if(rc <= stonith_ok || always_reply) {
 	reply = stonith_construct_reply(request, output, data, rc);
 	do_local_reply(reply, client_id, call_options & st_opt_sync_call, remote!=NULL);
 	free_xml(reply);
