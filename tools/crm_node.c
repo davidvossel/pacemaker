@@ -32,6 +32,7 @@
 #include <crm/crm.h>
 #include <crm/ais.h>
 #include <crm/common/cluster.h>
+#include <crm/common/mainloop.h>
 #include <crm/cib.h>
 
 int command = 0;
@@ -446,59 +447,50 @@ ais_membership_dispatch(AIS_Message * wrapper, char *data, int sender)
 #ifdef SUPPORT_CS_QUORUM
 #  include <corosync/quorum.h>
 #  include <corosync/cpg.h>
-static gboolean
-node_dispatch(IPC_Channel * ch, gpointer user_data)
+static int
+node_mcp_dispatch(const char *buffer, ssize_t length, gpointer userdata)
 {
-    xmlNode *msg = NULL;
-    gboolean stay_connected = TRUE;
+    xmlNode *msg = string2xml(buffer);
 
-    while (IPC_ISRCONN(ch)) {
-        if (ch->ops->is_message_pending(ch) == 0) {
-            break;
-        }
-
-        msg = xmlfromIPC(ch, MAX_IPC_DELAY);
-
-        if (msg) {
-            xmlNode *node = NULL;
-
-            crm_log_xml_trace(msg, "message");
-
-            for (node = __xml_first_child(msg); node != NULL; node = __xml_next(node)) {
-                const char *uname = crm_element_value(node, "uname");
-                if (command == 'l') {
-                    int id = 0;
-                    crm_element_value_int(node, "id", &id);
-                    fprintf(stdout, "%u %s\n", id, uname);
-
-                } else if (command == 'p') {
-                    fprintf(stdout, "%s ", uname);
-                }
+    if (msg) {
+        xmlNode *node = NULL;
+        
+        crm_log_xml_trace(msg, "message");
+        
+        for (node = __xml_first_child(msg); node != NULL; node = __xml_next(node)) {
+            const char *uname = crm_element_value(node, "uname");
+            if (command == 'l') {
+                int id = 0;
+                crm_element_value_int(node, "id", &id);
+                fprintf(stdout, "%u %s\n", id, uname);
+                
+            } else if (command == 'p') {
+                fprintf(stdout, "%s ", uname);
             }
-            free_xml(msg);
-
-            if (command == 'p') {
-                fprintf(stdout, "\n");
-            }
-
-            exit(0);
         }
-
-        if (ch->ch_status != IPC_CONNECT) {
-            break;
+        free_xml(msg);
+        
+        if (command == 'p') {
+            fprintf(stdout, "\n");
         }
+        
+        exit(0);
     }
 
-    if (ch->ch_status != IPC_CONNECT) {
-        stay_connected = FALSE;
-    }
-    return stay_connected;
+    return 0;
 }
 
 static void
-node_destroy(gpointer user_data)
+node_mcp_destroy(gpointer user_data)
 {
+    exit(1);
 }
+
+struct ipc_client_callbacks mcp_callbacks = 
+{
+    .dispatch = node_mcp_dispatch,
+    .destroy = node_mcp_destroy
+};
 
 static gboolean
 try_corosync(int command, enum cluster_type_e stack)
@@ -510,7 +502,6 @@ try_corosync(int command, enum cluster_type_e stack)
     cpg_handle_t c_handle = 0;
     quorum_handle_t q_handle = 0;
 
-    IPC_Channel *ch = NULL;
     GMainLoop *amainloop = NULL;
 
     switch (command) {
@@ -562,13 +553,10 @@ try_corosync(int command, enum cluster_type_e stack)
         case 'l':
         case 'p':
             /* Go to pacemakerd */ 
-            ch = init_client_ipc_comms_nodispatch("pcmk");
-
-            if(G_main_add_IPC_Channel(G_PRIORITY_HIGH, ch, FALSE, node_dispatch, NULL, node_destroy)) {
-                amainloop = g_main_new(FALSE);
+            amainloop = g_main_new(FALSE);
+            if(mainloop_add_ipc_client(CRM_SYSTEM_MCP, 0, NULL, &mcp_callbacks) != NULL) {
                 g_main_run(amainloop);
             }
-
             break;
     }
     return FALSE;
