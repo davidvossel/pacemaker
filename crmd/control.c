@@ -474,10 +474,7 @@ do_startup(long long action,
 
     if (cib_subsystem != NULL) {
         cib_subsystem->pid = -1;
-        cib_subsystem->path = CRM_DAEMON_DIR;
         cib_subsystem->name = CRM_SYSTEM_CIB;
-        cib_subsystem->command = CRM_DAEMON_DIR "/" CRM_SYSTEM_CIB;
-        cib_subsystem->args = "-VVc";
         cib_subsystem->flag_connected = R_CIB_CONNECTED;
         cib_subsystem->flag_required = R_CIB_REQUIRED;
 
@@ -487,10 +484,7 @@ do_startup(long long action,
 
     if (te_subsystem != NULL) {
         te_subsystem->pid = -1;
-        te_subsystem->path = CRM_DAEMON_DIR;
         te_subsystem->name = CRM_SYSTEM_TENGINE;
-        te_subsystem->command = CRM_DAEMON_DIR "/" CRM_SYSTEM_TENGINE;
-        te_subsystem->args = NULL;
         te_subsystem->flag_connected = R_TE_CONNECTED;
         te_subsystem->flag_required = R_TE_REQUIRED;
 
@@ -509,6 +503,12 @@ do_startup(long long action,
 
     } else {
         was_error = TRUE;
+    }
+
+    if (was_error == FALSE && is_heartbeat_cluster()) {
+        if(start_subsystem(pe_subsystem) == FALSE) {
+            was_error = TRUE;
+        }
     }
 
     if (was_error) {
@@ -619,6 +619,10 @@ do_stop(long long action,
         enum crmd_fsa_cause cause,
         enum crmd_fsa_state cur_state, enum crmd_fsa_input current_input, fsa_data_t * msg_data)
 {
+    if (is_heartbeat_cluster()) {
+        stop_subsystem(pe_subsystem, FALSE);   
+    }
+
     mainloop_del_ipc_server(ipcs);
     register_fsa_input(C_FSA_INTERNAL, I_TERMINATE, NULL);
 }
