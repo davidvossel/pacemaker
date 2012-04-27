@@ -218,7 +218,7 @@ typedef struct crm_ipc_s
 } crm_ipc_t;
 
 static int
-_infer_ipc_buffer(int max)
+pick_ipc_buffer(int max)
 {
     const char *env = getenv("PCMK_ipc_buffer");
 
@@ -246,14 +246,12 @@ crm_ipc_new(const char *name, size_t max_size)
     crm_malloc0(client, sizeof(crm_ipc_t));
 
     client->name = crm_strdup(name);
-    client->buf_size = _infer_ipc_buffer(max_size);
+    client->buf_size = pick_ipc_buffer(max_size);
     client->buffer = malloc(client->buf_size);
 
     client->pfd.fd = -1;
     client->pfd.events = POLLIN;
     client->pfd.revents = 0;
-    
-    crm_trace("Using max message size of %d for %s", client->buf_size, client->name);
     
     return client;
 }
