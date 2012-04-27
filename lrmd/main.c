@@ -19,20 +19,20 @@
 
 #include <glib.h>
 #include <crm/crm.h>
-//#include <matahari/services.h>
+#include <crm/services.h>
 
 int main(int argc, char ** argv)
 {
 	int rc = 0;
-//	GList *list = resources_list_providers("ocf");
-//	GList *gIter = list;
+	GList *list = resources_list_providers("ocf");
+	GList *gIter = list;
 
 	crm_log_init("lrmd-ng", LOG_INFO, TRUE, FALSE, argc, argv);
 	crm_info("LRMD it works");
 
-//	for (;gIter != NULL; gIter = gIter->next) {
-//		printf("Service api works... %s \n", (char *) gIter->data);
-//	}
+	for (;gIter != NULL; gIter = gIter->next) {
+		printf("Service api works... %s \n", (char *) gIter->data);
+	}
 
 	return rc;
 }

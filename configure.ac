@@ -1672,6 +1672,7 @@ lib/Makefile							\
 	lib/transition/Makefile					\
 	lib/fencing/Makefile					\
 	lib/lrmd/Makefile					\
+	lib/services/Makefile					\
 	lib/plugins/Makefile					\
 		lib/plugins/lrm/Makefile			\
 mcp/Makefile							\

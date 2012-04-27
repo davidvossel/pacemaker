@@ -14,15 +14,16 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #
+#
 
 MAINTAINERCLEANFILES = Makefile.in
 
-sbin_PROGRAMS  = lrmd
+INCLUDES         = -I matahari/ -I$(top_builddir)/include
 
-lrmd_SOURCES	= main.c
-lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
-			$(top_builddir)/lib/cluster/libcrmcluster.la	\
-			$(top_builddir)/lib/services/libpservice.la	\
-			$(CRYPTOLIB) $(CLUSTERLIBS) -lsigar
+lib_LTLIBRARIES = libpservice.la
 
-CFLAGS			= $(CFLAGS_COPY:-Werror=)
+libpservice_la_SOURCES = services.c services_linux.c mainloop.c utilities.c utilities_linux.c
+libpservice_la_LDFLAGS = -version-info 1:0:0
+libpservice_la_LIBADD = -lsigar
+
+AM_CFLAGS = $(INCLUDES)
