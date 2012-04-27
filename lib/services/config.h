@@ -1,5 +1,8 @@
-#ifndef MH_CONFIG_H
-#define MH_CONFIG_H
+#ifndef SERVICE_CONFIG_H
+#define SERVICE_CONFIG_H
+
+/* TODO this isn't really needed now.
+ * These config items are not being generated. */
 
 #define HAVE_STRING_H 1
 #define HAVE_SYS_IOCTL_H 1
