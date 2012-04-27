@@ -17,36 +17,22 @@
  *
  */
 
-#include <crm_internal.h>
-
-#include <sys/param.h>
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <sys/utsname.h>
-
-#include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-
+#include <glib.h>
 #include <crm/crm.h>
-#include <crm/msg_xml.h>
-#include <crm/common/ipc.h>
-#include <crm/common/cluster.h>
-#include <crm/common/util.h>
-
-#include <crm/common/xml.h>
-#include <crm/common/msg.h>
-
-#include <crm/cib.h>
+//#include <matahari/services.h>
 
 int main(int argc, char ** argv)
 {
 	int rc = 0;
+//	GList *list = resources_list_providers("ocf");
+//	GList *gIter = list;
 
 	crm_log_init("lrmd-ng", LOG_INFO, TRUE, FALSE, argc, argv);
-	crm_info("LRMD init");
+	crm_info("LRMD it works");
+
+//	for (;gIter != NULL; gIter = gIter->next) {
+//		printf("Service api works... %s \n", (char *) gIter->data);
+//	}
 
 	return rc;
 }
