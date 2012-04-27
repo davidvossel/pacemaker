@@ -443,25 +443,28 @@ mainloop_ipcc_callback(int fd, gpointer c)
     gboolean keep = TRUE;
     mainloop_ipc_t *client = c;
 
-    rc = crm_ipc_read(client->ipc);
-    crm_trace("New message for %s[%p] = %d", client->name, c, rc);
+    do {
+        rc = crm_ipc_read(client->ipc);
+        crm_trace("New message for %s[%p] = %d", client->name, c, rc);
 
-    if(rc <= 0) {
-        crm_perror(LOG_TRACE, "Message acquisition failed: %ld", rc);
+        if(rc <= 0) {
+            crm_perror(LOG_TRACE, "Message acquisition failed: %ld", rc);
         
-    } else if(client->callbacks && client->callbacks->dispatch) {
-        const char *buffer = crm_ipc_buffer(client->ipc);
-        if(client->callbacks->dispatch(buffer, rc, client->userdata) < 0) {
-            crm_trace("Connection to %s no longer required", client->name);
-            keep = FALSE;
+        } else if(client->callbacks && client->callbacks->dispatch) {
+            const char *buffer = crm_ipc_buffer(client->ipc);
+            if(client->callbacks->dispatch(buffer, rc, client->userdata) < 0) {
+                crm_trace("Connection to %s no longer required", client->name);
+                keep = FALSE;
+            } else {
+                crm_trace("delivered: %.60s", buffer);
+            }
+
         } else {
-            crm_trace("delivered: %.60s", buffer);
+            crm_trace("No callbacks? %p", client->callbacks);
         }
 
-    } else {
-        crm_trace("No callbacks? %p", client->callbacks);
-    }
-
+    } while(keep && rc > 0);
+    
     if(crm_ipc_connected(client->ipc) == FALSE) {
         crm_err("Connection to %s[%p] closed", client->name, c);
         keep = FALSE;
