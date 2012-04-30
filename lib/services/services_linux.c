@@ -31,8 +31,6 @@
 #include "crm/common/mainloop.h"
 #include "crm/services.h"
 
-#include "matahari/utilities.h"
-
 #include "services_private.h"
 #include "sigar.h"
 
@@ -540,7 +538,7 @@ resources_os_list_systemd_services(void)
         if (!(service = malloc(sizeof(char) * (len + 1)))) {
             break;
         }
-        service = mh_string_copy(service, ptr, len + 1);
+        service = strncpy(service, ptr, len);
         list = g_list_append(list, service);
     }
     services_action_free(action);

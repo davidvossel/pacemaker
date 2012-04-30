@@ -28,7 +28,6 @@
 #include "crm/crm.h"
 #include "crm/common/mainloop.h"
 #include "crm/services.h"
-#include "matahari/utilities.h"
 #include "services_private.h"
 #include <sigar.h>
 
@@ -55,27 +54,27 @@ svc_action_t *resources_action_create(
      * build the svc_action_t instance.
      */
 
-    if (mh_strlen_zero(name)) {
+    if (crm_strlen_zero(name)) {
         crm_err("A service or resource action must have a name.");
         return NULL;
     }
 
-    if (mh_strlen_zero(standard)) {
+    if (crm_strlen_zero(standard)) {
         crm_err("A service action must have a valid standard.");
         return NULL;
     }
 
-    if (!strcasecmp(standard, "ocf") && mh_strlen_zero(provider)) {
+    if (!strcasecmp(standard, "ocf") && crm_strlen_zero(provider)) {
         crm_err("An OCF resource action must have a provider.");
         return NULL;
     }
 
-    if (mh_strlen_zero(agent)) {
+    if (crm_strlen_zero(agent)) {
         crm_err("A service or resource action must have an agent.");
         return NULL;
     }
 
-    if (mh_strlen_zero(action)) {
+    if (crm_strlen_zero(action)) {
         crm_err("A service or resource action must specify an action.");
         return NULL;
     }
