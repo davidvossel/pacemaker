@@ -34,7 +34,6 @@
 #include "crm/services.h"
 
 #include "services_private.h"
-#include "sigar.h"
 
 static inline void
 set_fd_opts(int fd, int opts)
@@ -357,14 +356,14 @@ services_os_action_execute(svc_action_t* op, gboolean synchronous)
 
         crm_trace("Child done: %d", op->pid);
         if (timeout == 0) {
-            int killrc = sigar_proc_kill(op->pid, 9 /*SIGKILL*/);
+            int killrc = kill(op->pid, 9 /*SIGKILL*/);
 
             op->status = PCMK_LRM_OP_TIMEOUT;
             crm_warn("%s:%d - timed out after %dms", op->id, op->pid,
                     op->timeout);
 
-            if (killrc != SIGAR_OK && killrc != ESRCH) {
-                crm_err("kill(%d, KILL) failed: %d", op->pid, killrc);
+            if (killrc && errno != ESRCH) {
+                crm_err("kill(%d, KILL) failed: %d", op->pid, errno);
             }
 
         } else if (WIFEXITED(status)) {

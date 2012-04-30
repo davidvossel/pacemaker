@@ -979,13 +979,6 @@ if test x${enable_no_stack} = xyes; then
     SUPPORT_CS=no
 fi
 
-PKG_CHECK_MODULES(libsigar, libsigar, HAVE_sigar=1, HAVE_sigar=0)
-AC_CHECK_HEADERS(sigar.h)
-
-if test $HAVE_sigar = no; then
-	AC_MSG_FAILURE(sigar library is required for lrmd-ng support.)
-fi
-
 PKG_CHECK_MODULES(libqb, libqb, HAVE_libqb=1, HAVE_libqb=0)
 AC_CHECK_HEADERS(qb/qbipc_common.h)
 AC_CHECK_LIB(qb, qb_log_callsite_get)

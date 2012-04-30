@@ -33,7 +33,6 @@
 #include "crm/common/mainloop.h"
 #include "crm/services.h"
 #include "services_private.h"
-#include <sigar.h>
 
 /* TODO: Develop a rollover strategy */
 
