@@ -71,6 +71,7 @@ int main(int argc, char ** argv)
 	}
 	/* end test code */
 
+	mainloop_track_children(G_PRIORITY_HIGH);
 	mainloop_add_signal(SIGTERM, lrmd_shutdown);
 	mainloop = g_main_new(FALSE);
 	printf("starting\n");
