@@ -16,7 +16,9 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "config.h"
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <sys/types.h>
 #include <sys/stat.h>
