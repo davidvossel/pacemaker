@@ -17,11 +17,14 @@
 
 MAINTAINERCLEANFILES = Makefile.in
 
-sbin_PROGRAMS  = lrmd
+sbin_PROGRAMS  = lrmd lrmd_ctest
 
 lrmd_SOURCES	= main.c
 lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
-			$(top_builddir)/lib/services/libpservice.la	\
-			$(CRYPTOLIB) -lsigar
+			$(top_builddir)/lib/services/libpservice.la
+
+lrmd_ctest_SOURCES	= ctest.c
+lrmd_ctest_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
+			$(top_builddir)/lib/lrmd/liblrmd.la
 
 CFLAGS			= $(CFLAGS_COPY:-Werror=)
