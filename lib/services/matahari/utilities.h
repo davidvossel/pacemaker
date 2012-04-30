@@ -85,8 +85,6 @@ void
 g_list_free_full(GList *list, GDestroyNotify free_func);
 #endif
 
-#define DIMOF(a)    ((int) (sizeof(a) / sizeof(0[a])))
-
 #ifndef __GNUC__
 #    define __builtin_expect(expr, result) (expr)
 #endif

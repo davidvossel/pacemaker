@@ -27,9 +27,11 @@
 #include <fcntl.h>
 #include <string.h>
 
-#include "matahari/logging.h"
-#include "matahari/mainloop.h"
+#include "crm/crm.h"
+#include "crm/common/mainloop.h"
 #include "crm/services.h"
+
+#include "matahari/utilities.h"
 
 #include "services_private.h"
 #include "sigar.h"
@@ -40,10 +42,10 @@ set_fd_opts(int fd, int opts)
     int flag;
     if ((flag = fcntl(fd, F_GETFL)) >= 0) {
         if (fcntl(fd, F_SETFL, flag | opts) < 0) {
-            mh_perror(LOG_ERR, "fcntl() write failed");
+            crm_err( "fcntl() write failed");
         }
     } else {
-        mh_perror(LOG_ERR, "fcntl() read failed");
+        crm_err( "fcntl() read failed");
     }
 }
 
@@ -57,7 +59,7 @@ read_output(int fd, gpointer user_data)
     char buf[500];
     static const size_t buf_read_len = sizeof(buf) - 1;
 
-    mh_trace("%p", op);
+    crm_trace("%p", op);
 
     if (fd == op->opaque->stderr_fd) {
         is_err = TRUE;
@@ -102,7 +104,7 @@ pipe_out_done(gpointer user_data)
 {
     svc_action_t* op = (svc_action_t *) user_data;
 
-    mh_trace("%p", op);
+    crm_trace("%p", op);
 
     op->opaque->stdout_gsource = NULL;
     if (op->opaque->stdout_fd > STDERR_FILENO) {
@@ -126,7 +128,7 @@ static void
 set_ocf_env(const char *key, const char *value, gpointer user_data)
 {
     if (setenv(key, value, 1) != 0) {
-        mh_err("setenv failed in raexecocf.");
+        crm_err("setenv failed in raexecocf.");
     }
 }
 
@@ -171,7 +173,7 @@ add_OCF_env_vars(svc_action_t *op)
 static gboolean recurring_action_timer(gpointer data)
 {
     svc_action_t *op = data;
-    mh_debug("Scheduling another invokation of %s", op->id);
+    crm_debug("Scheduling another invokation of %s", op->id);
 
     /* Clean out the old result */
     free(op->stdout_data); op->stdout_data = NULL;
@@ -191,17 +193,17 @@ operation_finished(mainloop_child_t *p, int status, int signo, int exitcode)
 
     p->privatedata = NULL;
     op->status = PCMK_LRM_OP_DONE;
-    MH_ASSERT(op->pid == p->pid);
+    CRM_ASSERT(op->pid == p->pid);
 
     if (signo) {
         if (p->timeout) {
-            mh_warn("%s:%d - timed out after %dms", op->id, op->pid,
+            crm_warn("%s:%d - timed out after %dms", op->id, op->pid,
                     op->timeout);
             op->status = PCMK_LRM_OP_TIMEOUT;
             op->rc = PCMK_OCF_TIMEOUT;
 
         } else {
-            mh_warn("%s:%d - terminated with signal %d", op->id, op->pid,
+            crm_warn("%s:%d - terminated with signal %d", op->id, op->pid,
                     signo);
             op->status = PCMK_LRM_OP_ERROR;
             op->rc = PCMK_OCF_SIGNAL;
@@ -209,14 +211,14 @@ operation_finished(mainloop_child_t *p, int status, int signo, int exitcode)
 
     } else {
         op->rc = exitcode;
-        mh_debug("%s:%d - exited with rc=%d", op->id, op->pid, exitcode);
+        crm_debug("%s:%d - exited with rc=%d", op->id, op->pid, exitcode);
 
         if (op->stdout_data) {
             next = op->stdout_data;
             do {
                 offset = next;
                 next = strchrnul(offset, '\n');
-                mh_debug("%s:%d [ %.*s ]", op->id, op->pid,
+                crm_debug("%s:%d [ %.*s ]", op->id, op->pid,
                          (int) (next - offset), offset);
                 if (next[0] != 0) {
                     next++;
@@ -230,7 +232,7 @@ operation_finished(mainloop_child_t *p, int status, int signo, int exitcode)
             do {
                 offset = next;
                 next = strchrnul(offset, '\n');
-                mh_notice("%s:%d [ %.*s ]", op->id, op->pid,
+                crm_notice("%s:%d [ %.*s ]", op->id, op->pid,
                           (int) (next - offset), offset);
                 if (next[0] != 0) {
                     next++;
@@ -270,17 +272,17 @@ services_os_action_execute(svc_action_t* op, gboolean synchronous)
     int stderr_fd[2];
 
     if (pipe(stdout_fd) < 0) {
-        mh_perror(LOG_ERR, "pipe() failed");
+        crm_err( "pipe() failed");
     }
 
     if (pipe(stderr_fd) < 0) {
-        mh_perror(LOG_ERR, "pipe() failed");
+        crm_err( "pipe() failed");
     }
 
     op->pid = fork();
     switch (op->pid) {
     case -1:
-        mh_perror(LOG_ERR, "fork() failed");
+        crm_err( "fork() failed");
         close(stdout_fd[0]);
         close(stdout_fd[1]);
         close(stderr_fd[0]);
@@ -297,13 +299,13 @@ services_os_action_execute(svc_action_t* op, gboolean synchronous)
         close(stderr_fd[0]);
         if (STDOUT_FILENO != stdout_fd[1]) {
             if (dup2(stdout_fd[1], STDOUT_FILENO) != STDOUT_FILENO) {
-                mh_perror(LOG_ERR, "dup2() failed (stdout)");
+                crm_err( "dup2() failed (stdout)");
             }
             close(stdout_fd[1]);
         }
         if (STDERR_FILENO != stderr_fd[1]) {
             if (dup2(stderr_fd[1], STDERR_FILENO) != STDERR_FILENO) {
-                mh_perror(LOG_ERR, "dup2() failed (stderr)");
+                crm_err( "dup2() failed (stderr)");
             }
             close(stderr_fd[1]);
         }
@@ -347,39 +349,39 @@ services_os_action_execute(svc_action_t* op, gboolean synchronous)
     if (synchronous) {
         int status = 0;
         int timeout = 1 + op->timeout / 1000;
-        mh_trace("Waiting for %d", op->pid);
+        crm_trace("Waiting for %d", op->pid);
         while (timeout > 0 && waitpid(op->pid, &status, WNOHANG) <= 0) {
             sleep(1);
             timeout--;
         }
 
-        mh_trace("Child done: %d", op->pid);
+        crm_trace("Child done: %d", op->pid);
         if (timeout == 0) {
             int killrc = sigar_proc_kill(op->pid, 9 /*SIGKILL*/);
 
             op->status = PCMK_LRM_OP_TIMEOUT;
-            mh_warn("%s:%d - timed out after %dms", op->id, op->pid,
+            crm_warn("%s:%d - timed out after %dms", op->id, op->pid,
                     op->timeout);
 
             if (killrc != SIGAR_OK && killrc != ESRCH) {
-                mh_err("kill(%d, KILL) failed: %d", op->pid, killrc);
+                crm_err("kill(%d, KILL) failed: %d", op->pid, killrc);
             }
 
         } else if (WIFEXITED(status)) {
             op->status = PCMK_LRM_OP_DONE;
             op->rc = WEXITSTATUS(status);
-            mh_err("Managed %s process %d exited with rc=%d", op->id, op->pid,
+            crm_err("Managed %s process %d exited with rc=%d", op->id, op->pid,
                    op->rc);
 
         } else if (WIFSIGNALED(status)) {
             int signo = WTERMSIG(status);
             op->status = PCMK_LRM_OP_ERROR;
-            mh_err("Managed %s process %d exited with signal=%d", op->id,
+            crm_err("Managed %s process %d exited with signal=%d", op->id,
                    op->pid, signo);
         }
 #ifdef WCOREDUMP
         if (WCOREDUMP(status)) {
-            mh_err("Managed %s process %d dumped core", op->id, op->pid);
+            crm_err("Managed %s process %d dumped core", op->id, op->pid);
         }
 #endif
 
@@ -387,7 +389,7 @@ services_os_action_execute(svc_action_t* op, gboolean synchronous)
         read_output(op->opaque->stderr_fd, op);
 
     } else {
-        mh_trace("Async waiting for %d - %s", op->pid, op->opaque->exec);
+        crm_trace("Async waiting for %d - %s", op->pid, op->opaque->exec);
         mainloop_add_child(op->pid, op->timeout, op->id, op,
                            operation_finished);
 

@@ -27,12 +27,11 @@
 #include <glib.h>
 #include <sigar.h>
 
-#include "matahari/logging.h"
+#include <crm/crm.h>
 #include "matahari/utilities.h"
 #include "matahari/errors.h"
 #include "utilities_private.h"
 
-MH_TRACE_INIT_DATA(mh_core);
 int mh_log_level = LOG_NOTICE;
 gboolean mh_stderr_enabled = FALSE;
 
@@ -57,8 +56,8 @@ mh_update_trace_data(struct _mh_ddebug_query *query, struct _mh_ddebug *start,
     struct _mh_ddebug *dp;
     const char *match = "unknown";
 
-    MH_ASSERT(stop != NULL);
-    MH_ASSERT(start != NULL);
+    CRM_ASSERT(stop != NULL);
+    CRM_ASSERT(start != NULL);
 
     /* fprintf(stderr, "checking for fns: %s files: %s fmts: %s\n", */
     /*         query->functions, query->files, query->formats); */
@@ -104,7 +103,7 @@ mh_update_trace_data(struct _mh_ddebug_query *query, struct _mh_ddebug *start,
         if (bump) {
             nfound++;
             dp->bump = LOG_NOTICE;
-            mh_log_always(LOG_INFO, "Detected '%s' match: %-12s %20s:%u fmt:%s",
+            crm_info("Detected '%s' match: %-12s %20s:%u fmt:%s",
                           match, dp->function, dp->filename, dp->lineno,
                           dp->format);
         }
@@ -129,7 +128,7 @@ mh_ddebug_callback(struct dl_phdr_info *info, size_t size, void *data)
         handle = dlopen (info->dlpi_name, RTLD_LAZY);
         error = dlerror();
         if (!handle || error) {
-            mh_err("%s", error);
+            crm_err("%s", error);
             if (handle) {
                 dlclose(handle);
             }
@@ -150,7 +149,7 @@ mh_ddebug_callback(struct dl_phdr_info *info, size_t size, void *data)
         } else {
             unsigned long int len = (unsigned long int) stop -
                                     (unsigned long int) start;
-            mh_info("Checking for query matches in %lu trace symbols from: "
+            crm_info("Checking for query matches in %lu trace symbols from: "
                     "%s (offset: %p)", len / sizeof(struct _mh_ddebug),
                     info->dlpi_name, start);
 
@@ -163,186 +162,6 @@ mh_ddebug_callback(struct dl_phdr_info *info, size_t size, void *data)
     return 0;
 }
 #endif
-
-static void
-mh_glib_handler(const gchar *log_domain, GLogLevelFlags flags,
-                const gchar *message, gpointer user_data)
-{
-    int log_level = LOG_WARNING;
-    GLogLevelFlags msg_level = (flags & G_LOG_LEVEL_MASK);
-
-    switch (msg_level) {
-    case G_LOG_LEVEL_CRITICAL:
-        /* log and record how we got here */
-        mh_abort(__FILE__, __PRETTY_FUNCTION__, __LINE__, message, TRUE, TRUE);
-        return;
-
-    case G_LOG_FLAG_FATAL:    log_level = LOG_CRIT;   break;
-    case G_LOG_LEVEL_ERROR:   log_level = LOG_ERR;    break;
-    case G_LOG_LEVEL_MESSAGE: log_level = LOG_NOTICE; break;
-    case G_LOG_LEVEL_INFO:    log_level = LOG_INFO;   break;
-    case G_LOG_LEVEL_DEBUG:   log_level = LOG_DEBUG;  break;
-
-    case G_LOG_LEVEL_WARNING:
-    case G_LOG_FLAG_RECURSION:
-    case G_LOG_LEVEL_MASK:
-        log_level = LOG_WARNING;
-        break;
-    }
-
-    mh_log(log_level, "%s: %s", log_domain, message);
-}
-
-void
-mh_enable_stderr(gboolean to_stderr)
-{
-    mh_stderr_enabled = to_stderr;
-}
-
-void
-mh_log_init(const char *ident, int level, gboolean to_stderr)
-{
-#if SUPPORT_TRACING
-    gboolean search = FALSE;
-    const char *env_value = NULL;
-    struct _mh_ddebug_query query;
-#endif
-
-    mh_log_level = level;
-    mh_stderr_enabled = to_stderr;
-
-#ifdef __linux__
-    openlog(ident, LOG_NDELAY | LOG_PID, LOG_DAEMON);
-#endif
-
-    /* Consistant glib logging */
-    g_log_set_default_handler(mh_glib_handler, NULL);
-
-    /* and for good measure... - this enum is a bit field (!) */
-    g_log_set_always_fatal((GLogLevelFlags) 0); /*value out of range*/
-
-#if SUPPORT_TRACING
-    memset(&query, 0, sizeof(struct _mh_ddebug_query));
-
-    env_value = getenv("MH_trace_files");
-    if (env_value) {
-        search = TRUE;
-        query.files = env_value;
-    }
-
-    env_value = getenv("MH_trace_formats");
-    if (env_value) {
-        search = TRUE;
-        query.formats = env_value;
-    }
-
-    env_value = getenv("MH_trace_functions");
-    if (env_value) {
-        search = TRUE;
-        query.functions = env_value;
-    }
-
-    if (search) {
-        mh_update_trace_data(&query, __start___verbose, __stop___verbose);
-        dl_iterate_phdr(mh_ddebug_callback, &query);
-        if (query.matches == 0) {
-            mh_log_always(LOG_DEBUG, "no matches for query: {fn='%s', "
-                          "file='%s', fmt='%s'} in %llu entries",
-                          query.functions ? query.functions : "N/A",
-                          query.files ? query.files : "N/A",
-                          query.formats ? query.formats : "N/A",
-                          query.total);
-        } else {
-            mh_log_always(LOG_INFO, "%llu matches for query: {fn='%s', "
-                          "file='%s', fmt='%s'} in %llu entries",
-                          query.matches,
-                          query.functions ? query.functions : "N/A",
-                          query.files ? query.files : "N/A",
-                          query.formats ? query.formats : "N/A",
-                          query.total);
-        }
-    }
-#endif
-}
-
-void
-mh_abort(const char *file, const char *function, int line,
-         const char *assert_condition, int do_core, int do_fork)
-{
-#ifdef __linux__
-    int rc = 0;
-    int pid = 0;
-    int status = 0;
-
-    if (do_core == 0) {
-        mh_err("%s: Triggered assert at %s:%d : %s",
-               function, file, line, assert_condition);
-        return;
-
-    } else if (do_fork) {
-        pid = fork();
-
-    } else {
-        mh_err("%s: Triggered fatal assert at %s:%d : %s",
-               function, file, line, assert_condition);
-    }
-
-    switch (pid) {
-    case -1:
-        mh_crit("%s: Cannot create core for non-fatal assert at %s:%d : %s",
-                function, file, line, assert_condition);
-        return;
-
-    default: /* Parent */
-        mh_err("%s: Forked child %d to record non-fatal assert at %s:%d : %s",
-               function, pid, file, line, assert_condition);
-        do {
-            rc = waitpid(pid, &status, 0);
-            if (rc < 0 && errno != EINTR) {
-                mh_perror(LOG_ERR, "%s: Cannot wait on forked child %d",
-                          function, pid);
-            }
-
-        } while (rc < 0 && errno == EINTR);
-
-        return;
-
-    case 0: /* Child */
-        abort();
-        break;
-    }
-#else
-    mh_err("%s: Triggered assert at %s:%d : %s", function, file, line,
-           assert_condition);
-    abort();
-#endif
-}
-
-void
-mh_log_fn(int priority, const char * fmt, ...)
-{
-    va_list ap;
-
-    if (mh_stderr_enabled) {
-        va_start(ap, fmt);
-        vfprintf(stderr, fmt, ap);
-#ifdef __linux__
-        fprintf(stderr, "\n");
-#else
-        fprintf(stderr, "\n\r");
-#endif
-        va_end(ap);
-
-#ifdef __linux__
-    } else {
-        va_start(ap, fmt);
-        vsyslog(priority, fmt, ap);
-        va_end(ap);
-#endif
-    }
-
-    return;
-}
 
 const char *
 mh_domainname(void)
@@ -365,7 +184,7 @@ mh_domainname(void)
         return "";
     }
 
-    mh_trace("Got domainname: %s", domainname);
+    crm_trace("Got domainname: %s", domainname);
     return domainname;
 }
 
@@ -376,7 +195,7 @@ mh_dnsdomainname(void)
 
     res = mh_os_dnsdomainname();
 
-    mh_trace("Got dnsdomainname: '%s'", res);
+    crm_trace("Got dnsdomainname: '%s'", res);
 
     return res;
 }
@@ -410,7 +229,7 @@ mh_hostname(void)
         hostname = strdup(mh_uuid());
     }
 
-    mh_trace("Got hostname: %s", hostname);
+    crm_trace("Got hostname: %s", hostname);
     return hostname;
 }
 
@@ -560,7 +379,7 @@ mh_read_from_fd(int fd, char **data)
 #endif
 
     if (g_io_channel_read_to_end(ch, data, &length, &err) != G_IO_STATUS_NORMAL) {
-        mh_err("Unable to read from filedescriptor %d: %s", fd, err->message);
+        crm_err("Unable to read from filedescriptor %d: %s", fd, err->message);
         return -err->code;
     }
     g_io_channel_close(ch);

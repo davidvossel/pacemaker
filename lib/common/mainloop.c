@@ -26,6 +26,8 @@
 #include <signal.h>
 #include <errno.h>
 
+#include <sys/wait.h>
+
 #include <crm/crm.h>
 #include <crm/common/mainloop.h>
 
@@ -55,6 +57,8 @@ crm_trigger_prepare(GSource * source, gint * timeout)
 
     return trig->trigger;
 }
+
+static GHashTable *mainloop_process_table = NULL;
 
 static gboolean
 crm_trigger_check(GSource * source)
@@ -273,4 +277,242 @@ mainloop_destroy_signal(int sig)
     crm_signals[sig] = NULL;
     mainloop_destroy_trigger((crm_trigger_t *) tmp);
     return TRUE;
+}
+
+static gboolean
+mainloop_fd_prepare(GSource *source, gint *timeout)
+{
+    return FALSE;
+}
+
+static gboolean
+mainloop_fd_check(GSource* source)
+{
+    mainloop_fd_t *trig = (mainloop_fd_t *) source;
+    if (trig->gpoll.revents) {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static gboolean
+mainloop_fd_dispatch(GSource *source, GSourceFunc callback, gpointer userdata)
+{
+    mainloop_fd_t *trig = (mainloop_fd_t *) source;
+    crm_trace("%p", source);
+    /*
+     * Is output now unblocked?
+     *
+     * If so, turn off OUTPUT_EVENTS to avoid going into
+     * a tight poll(2) loop.
+     */
+    if (trig->gpoll.revents & G_IO_OUT) {
+        trig->gpoll.events &= ~G_IO_OUT;
+    }
+
+    if (trig->dispatch != NULL
+        && trig->dispatch(trig->gpoll.fd, trig->user_data) == FALSE) {
+        g_source_remove_poll(source, &trig->gpoll);
+        g_source_unref(source); /* Really? */
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static void
+mainloop_fd_destroy(GSource *source)
+{
+    mainloop_fd_t *trig = (mainloop_fd_t *) source;
+    crm_trace("%p", source);
+
+    if (trig->dnotify) {
+        trig->dnotify(trig->user_data);
+    }
+}
+
+static GSourceFuncs mainloop_fd_funcs = {
+    mainloop_fd_prepare,
+    mainloop_fd_check,
+    mainloop_fd_dispatch,
+    mainloop_fd_destroy,
+};
+
+mainloop_fd_t *
+mainloop_add_fd(int priority, int fd,
+                gboolean (*dispatch)(int fd, gpointer userdata),
+                GDestroyNotify notify, gpointer userdata)
+{
+    GSource *source = NULL;
+    mainloop_fd_t *fd_source = NULL;
+    CRM_ASSERT(sizeof(mainloop_fd_t) > sizeof(GSource));
+    source = g_source_new(&mainloop_fd_funcs, sizeof(mainloop_fd_t));
+    CRM_ASSERT(source != NULL);
+
+    fd_source = (mainloop_fd_t *) source;
+    fd_source->id = 0;
+    fd_source->gpoll.fd = fd;
+    fd_source->gpoll.events = G_IO_ERR|G_IO_NVAL|G_IO_IN|G_IO_PRI|G_IO_HUP;
+    fd_source->gpoll.revents = 0;
+
+    /*
+     * Normally we'd use g_source_set_callback() to specify the dispatch
+     * function, but we want to supply the fd too, so we store it in
+     * fd_source->dispatch instead
+     */
+    fd_source->dnotify = notify;
+    fd_source->dispatch = dispatch;
+    fd_source->user_data = userdata;
+
+    g_source_set_priority(source, priority);
+    g_source_set_can_recurse(source, FALSE);
+    g_source_add_poll(source, &fd_source->gpoll);
+
+    fd_source->id = g_source_attach(source, NULL);
+    return fd_source;
+}
+
+gboolean
+mainloop_destroy_fd(mainloop_fd_t *source)
+{
+    g_source_remove_poll((GSource *) source, &source->gpoll);
+    g_source_remove(source->id);
+    source->id = 0;
+    g_source_unref((GSource *) source);
+
+    return TRUE;
+}
+
+static gboolean
+child_timeout_callback(gpointer p)
+{
+    pid_t pid = (pid_t) GPOINTER_TO_INT(p);
+    mainloop_child_t *pinfo = (mainloop_child_t *) g_hash_table_lookup(
+            mainloop_process_table, p);
+
+    if (pinfo == NULL) {
+        return FALSE;
+    }
+
+    pinfo->timerid = 0;
+    if (pinfo->timeout) {
+        crm_crit("%s process (PID %d) will not die!", pinfo->desc, (int)pid);
+        return FALSE;
+    }
+
+    pinfo->timeout = TRUE;
+    crm_warn("%s process (PID %d) timed out", pinfo->desc, (int)pid);
+
+    if (kill(pinfo->pid, SIGKILL) < 0) {
+        if (errno == ESRCH) {
+            /* Nothing left to do */
+            return FALSE;
+        }
+        crm_perror(LOG_ERR, "kill(%d, KILL) failed", pid);
+    }
+
+    pinfo->timerid = g_timeout_add(5000, child_timeout_callback, p);
+    return FALSE;
+}
+
+static void
+mainloop_child_destroy(gpointer data)
+{
+    mainloop_child_t *p = data;
+
+    free(p->desc);
+
+    g_free(p);
+}
+
+/* Create/Log a new tracked process
+ * To track a process group, use -pid
+ */
+void
+mainloop_add_child(pid_t pid, int timeout, const char *desc, void * privatedata,
+                   void (*callback)(mainloop_child_t *p, int status, int signo,
+                                    int exitcode))
+{
+    mainloop_child_t *p = g_new(mainloop_child_t, 1);
+
+    if (mainloop_process_table == NULL) {
+        mainloop_process_table = g_hash_table_new_full(
+            g_direct_hash, g_direct_equal, NULL, mainloop_child_destroy);
+    }
+
+    p->pid = pid;
+    p->timerid = 0;
+    p->timeout = FALSE;
+    p->desc = strdup(desc);
+    p->privatedata = privatedata;
+    p->callback = callback;
+
+    if (timeout) {
+        p->timerid = g_timeout_add(
+            timeout, child_timeout_callback, GINT_TO_POINTER(pid));
+    }
+
+    g_hash_table_insert(mainloop_process_table, GINT_TO_POINTER(abs(pid)), p);
+}
+
+static void
+child_death_dispatch(int sig)
+{
+    int status = 0;
+    while (TRUE) {
+        pid_t pid = wait3(&status, WNOHANG, NULL);
+        if (pid > 0) {
+            int signo = 0, exitcode = 0;
+
+            mainloop_child_t *p = g_hash_table_lookup(mainloop_process_table,
+                                                      GINT_TO_POINTER(pid));
+            crm_trace("Managed process %d exited: %p", pid, p);
+            if (p == NULL) {
+                continue;
+            }
+
+            if (WIFEXITED(status)) {
+                exitcode = WEXITSTATUS(status);
+                crm_trace("Managed process %d (%s) exited with rc=%d", pid,
+                         p->desc, exitcode);
+
+            } else if (WIFSIGNALED(status)) {
+                signo = WTERMSIG(status);
+                crm_trace("Managed process %d (%s) exited with signal=%d", pid,
+                         p->desc, signo);
+            }
+#ifdef WCOREDUMP
+            if (WCOREDUMP(status)) {
+                crm_err("Managed process %d (%s) dumped core", pid, p->desc);
+            }
+#endif
+            if (p->timerid != 0) {
+                crm_trace("Removing timer %d", p->timerid);
+                g_source_remove(p->timerid);
+                p->timerid = 0;
+            }
+            p->callback(p, status, signo, exitcode);
+            g_hash_table_remove(mainloop_process_table, GINT_TO_POINTER(pid));
+            crm_trace("Removed process entry for %d", pid);
+            return;
+
+        } else {
+            if (errno == EAGAIN) {
+                continue;
+            } else if (errno != ECHILD) {
+                crm_perror(LOG_ERR, "wait3() failed");
+            }
+            break;
+        }
+    }
+}
+
+void
+mainloop_track_children(int priority)
+{
+    if (mainloop_process_table == NULL) {
+        mainloop_process_table = g_hash_table_new_full(
+            g_direct_hash, g_direct_equal, NULL, NULL/*TODO: Add destructor */);
+    }
+
+    mainloop_add_signal(SIGCHLD, child_death_dispatch);
 }

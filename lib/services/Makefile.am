@@ -22,7 +22,7 @@ INCLUDES         = -I matahari/ -I$(top_builddir)/include
 
 lib_LTLIBRARIES = libpservice.la
 
-libpservice_la_SOURCES = services.c services_linux.c mainloop.c utilities.c utilities_linux.c
+libpservice_la_SOURCES = services.c services_linux.c utilities.c utilities_linux.c
 libpservice_la_LDFLAGS = -version-info 1:0:0
 libpservice_la_LIBADD = -lsigar
 

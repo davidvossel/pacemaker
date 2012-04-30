@@ -25,13 +25,12 @@
 #include <dirent.h>
 #include <fcntl.h>
 
-#include "matahari/logging.h"
-#include "matahari/mainloop.h"
+#include "crm/crm.h"
+#include "crm/common/mainloop.h"
 #include "crm/services.h"
+#include "matahari/utilities.h"
 #include "services_private.h"
 #include <sigar.h>
-
-MH_TRACE_INIT_DATA(mh_services);
 
 /* TODO: Develop a rollover strategy */
 
@@ -57,27 +56,27 @@ svc_action_t *resources_action_create(
      */
 
     if (mh_strlen_zero(name)) {
-        mh_err("A service or resource action must have a name.");
+        crm_err("A service or resource action must have a name.");
         return NULL;
     }
 
     if (mh_strlen_zero(standard)) {
-        mh_err("A service action must have a valid standard.");
+        crm_err("A service action must have a valid standard.");
         return NULL;
     }
 
     if (!strcasecmp(standard, "ocf") && mh_strlen_zero(provider)) {
-        mh_err("An OCF resource action must have a provider.");
+        crm_err("An OCF resource action must have a provider.");
         return NULL;
     }
 
     if (mh_strlen_zero(agent)) {
-        mh_err("A service or resource action must have an agent.");
+        crm_err("A service or resource action must have an agent.");
         return NULL;
     }
 
     if (mh_strlen_zero(action)) {
-        mh_err("A service or resource action must specify an action.");
+        crm_err("A service or resource action must specify an action.");
         return NULL;
     }
 
@@ -122,7 +121,7 @@ svc_action_t *resources_action_create(
         }
         op->opaque->args[2] = service;
     } else {
-        mh_err("Unknown resource standard: %s", standard);
+        crm_err("Unknown resource standard: %s", standard);
         services_action_free(op);
         op = NULL;
     }
@@ -151,7 +150,7 @@ mh_services_action_create_generic(const char *exec, const char *args[])
         op->opaque->args[cur_arg] = strdup(args[cur_arg - 1]);
 
         if (cur_arg == DIMOF(op->opaque->args) - 1) {
-            mh_err("svc_action_t args list not long enough for '%s' execution request.", exec);
+            crm_err("svc_action_t args list not long enough for '%s' execution request.", exec);
             break;
         }
     }
@@ -215,7 +214,7 @@ services_action_cancel(const char *name, const char *action, int interval)
         return FALSE;
     }
 
-    mh_debug("Removing %s", op->id);
+    crm_debug("Removing %s", op->id);
     if (op->opaque->repeat_timer) {
         g_source_remove(op->opaque->repeat_timer);
     }
@@ -247,13 +246,13 @@ gboolean
 services_action_sync(svc_action_t* op)
 {
     gboolean rc = services_os_action_execute(op, TRUE);
-    mh_trace(" > %s_%s_%d: %s = %d", op->rsc, op->action, op->interval,
+    crm_trace(" > %s_%s_%d: %s = %d", op->rsc, op->action, op->interval,
              op->opaque->exec, op->rc);
     if (op->stdout_data) {
-        mh_trace(" >  stdout: %s", op->stdout_data);
+        crm_trace(" >  stdout: %s", op->stdout_data);
     }
     if (op->stderr_data) {
-        mh_trace(" >  stderr: %s", op->stderr_data);
+        crm_trace(" >  stderr: %s", op->stderr_data);
     }
     return rc;
 }

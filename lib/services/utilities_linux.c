@@ -24,8 +24,9 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-#include "matahari/logging.h"
+#include <crm/crm.h>
 #include "utilities_private.h"
+#include "matahari/utilities.h"
 
 const char *
 mh_os_dnsdomainname(void)
@@ -49,7 +50,7 @@ mh_os_dnsdomainname(void)
     }
 
     if ((res = getaddrinfo(mh_hostname(), NULL, &hints, &ai))) {
-        mh_notice("Unable to determine dnsdomainname: (%d) %s\n", errno, strerror(errno));
+        crm_notice("Unable to determine dnsdomainname: (%d) %s\n", errno, strerror(errno));
         return "";
     }
 
@@ -78,7 +79,7 @@ mh_os_uuid(void)
     }
 
     if(uuid) {
-        mh_trace("Got uuid: %s", uuid);
+        crm_trace("Got uuid: %s", uuid);
     }
     return uuid;
 }
