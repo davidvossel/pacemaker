@@ -21,8 +21,7 @@ sbin_PROGRAMS  = lrmd
 
 lrmd_SOURCES	= main.c
 lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
-			$(top_builddir)/lib/cluster/libcrmcluster.la	\
 			$(top_builddir)/lib/services/libpservice.la	\
-			$(CRYPTOLIB) $(CLUSTERLIBS) -lsigar
+			$(CRYPTOLIB) -lsigar
 
 CFLAGS			= $(CFLAGS_COPY:-Werror=)
