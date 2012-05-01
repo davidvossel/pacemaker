@@ -63,4 +63,44 @@ void mainloop_del_ipc_client(mainloop_ipc_t *client);
 
 crm_ipc_t *mainloop_get_ipc_client(mainloop_ipc_t *client);
 
+typedef struct mainloop_fd_s {
+    GSource source;
+    GPollFD	gpoll;
+    guint id;
+    void *user_data;
+    GDestroyNotify dnotify;
+    gboolean (*dispatch)(int fd, gpointer user_data);
+} mainloop_fd_t;
+
+mainloop_fd_t *
+mainloop_add_fd(int priority, int fd,
+                gboolean (*dispatch)(int fd, gpointer userdata),
+                GDestroyNotify notify, gpointer userdata);
+
+gboolean
+mainloop_destroy_fd(mainloop_fd_t* source);
+
+typedef struct mainloop_child_s mainloop_child_t;
+struct mainloop_child_s {
+    pid_t     pid;
+    char     *desc;
+    unsigned  timerid;
+    gboolean  timeout;
+    void     *privatedata;
+
+    /* Called when a process dies */
+    void (*callback)(mainloop_child_t* p, int status, int signo, int exitcode);
+};
+
+void
+mainloop_track_children(int priority);
+
+/*
+ * Create a new tracked process
+ * To track a process group, use -pid
+ */
+void
+mainloop_add_child(pid_t pid, int timeout, const char *desc, void *privatedata,
+                   void (*callback)(mainloop_child_t* p, int status, int signo,
+                                    int exitcode));
 #endif
