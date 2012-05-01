@@ -29,8 +29,13 @@ lrmd_t *lrmd_conn = NULL;
 
 int main(int argc, char ** argv)
 {
+	int rc = 0;
+	int fd = 0;
+
 	lrmd_conn = lrmd_api_new();
-	if (lrmd_conn) {
+	rc = lrmd_conn->cmds->connect(lrmd_conn, "lrmd_ctest", &fd);
+
+	if (!rc) {
 		printf("lrmd client connection established\n");
 	} else {
 		printf("lrmd client connection failed\n");

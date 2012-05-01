@@ -17,25 +17,12 @@
  *
  */
 
-#ifndef LRMD__H
-#define LRMD__H
+#ifndef LRMD_PVT__H
+#define LRMD_PVT__H
 
-typedef struct lrmd_s lrmd_t;
+#include <glib.h>
+#include <crm/common/ipc.h>
 
-extern lrmd_t *lrmd_api_new(void);
-extern void lrmd_api_delete(lrmd_t * lrmd);
-
-typedef struct lrmd_api_operations_s
-{
-	int (*connect) (lrmd_t *lrmd, const char *name, int *lrmd_fd);
-	int (*disconnect)(lrmd_t *lrmd);
-} lrmd_api_operations_t;
-
-struct lrmd_s {
-	lrmd_api_operations_t *cmds;
-	void *private;
-};
-
-
+gboolean process_lrmd_message(xmlNode *msg, xmlNode *xml_data, qb_ipcs_connection_t *sender);
 
 #endif

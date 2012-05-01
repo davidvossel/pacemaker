@@ -19,7 +19,7 @@ MAINTAINERCLEANFILES = Makefile.in
 
 sbin_PROGRAMS  = lrmd lrmd_ctest
 
-lrmd_SOURCES	= main.c
+lrmd_SOURCES	= main.c lrmd.c
 lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
 			$(top_builddir)/lib/services/libpservice.la
 
