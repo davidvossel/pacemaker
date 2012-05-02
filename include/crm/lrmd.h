@@ -27,10 +27,32 @@ typedef struct lrmd_s lrmd_t;
 #define F_LRMD_OPERATION		"lrmd_op"
 #define F_LRMD_CLIENTNAME		"lrmd_clientname"
 #define F_LRMD_CLIENTID		"lrmd_clientid"
+#define F_LRMD_CALLBACK_TOKEN	"lrmd_async_id"
+#define F_LRMD_CALLID		"lrmd_callid"
+#define F_LRMD_CALLOPTS		"lrmd_callopt"
+#define F_LRMD_CALLDATA		"lrmd_calldata"
+#define F_LRMD_RC			"lrmd_rc"
+#define F_LRMD_TIMEOUT		"lrmd_timeout"
+#define F_LRMD_CLASS		"lrmd_class"
+#define F_LRMD_PROVIDER		"lrmd_provider"
+#define F_LRMD_TYPE		"lrmd_type"
+#define F_LRMD_ORIGIN		"lrmd_origin"
+#define F_LRMD_RSC_ID	"lrmd_rsc_id"
+
+#define LRMD_OP_RSC_REG	"lrmd_rsc_register"
+#define LRMD_OP_RSC_UNREG	"lrmd_rsc_unregister"
+
+#define F_LRMD_RSC	"lrmd_rsc"
 
 #define T_LRMD		"lrmd"
 
 //#define _TEST // TODO remove all references to this define.
+
+enum lrmd_call_options {
+	lrmd_opt_none		= 0x00000000,
+	lrmd_opt_sync_call	= 0x00000001,
+};
+
 enum lrmd_errors {
 	lrmd_ok				=  0,
 	lrmd_pending			= -1,
@@ -42,8 +64,9 @@ enum lrmd_errors {
 	lrmd_err_exists			= -7,
 	lrmd_err_timeout			= -8,
 	lrmd_err_ipc				= -9,
-/*
 	lrmd_err_peer				= -10,
+
+/*
 	lrmd_err_unknown_operation		= -11,
 	lrmd_err_unknown_rsc		= -12,
 	lrmd_err_unknown_port			= -13,
@@ -58,15 +81,6 @@ enum lrmd_errors {
 */
 };
 
-typedef struct lrmd_rsc_history_s {
-	/*! Last failed operation */
-	svc_action_t *failed;
-	/*! Last successful non-recurring operation result */
-	svc_action_t *last;
-	/*! Last successful result for each recurring operation. */
-	GList *recurring;
-} lrmd_rsc_history_t;
-
 extern lrmd_t *lrmd_api_new(void);
 extern void lrmd_api_delete(lrmd_t * lrmd);
 
@@ -77,17 +91,20 @@ typedef struct lrmd_api_operations_s
 	int (*disconnect)(lrmd_t *lrmd);
 
 	/* TODO IMPLEMENT */
-	int (*remove_rsc) (lrmd_t *lrmd, const char *rsc_id);
-
-	/* TODO IMPLEMENT */
 	int (*register_rsc) (lrmd_t *lrmd,
 		const char *rsc_id,
 		const char *class,
 		const char *provider,
-		const char *type);
+		const char *type,
+		enum lrmd_call_options options);
 
 	/* TODO IMPLEMENT */
-	GList* (*list_rscs)(lrmd_t *lrmd);
+	int (*unregister_rsc) (lrmd_t *lrmd,
+		const char *rsc_id,
+		enum lrmd_call_options options);
+
+	/* TODO IMPLEMENT - come up with a list structure for this that isn't glib*/
+	void * (*list_rscs)(lrmd_t *lrmd);
 
 	/*!
 	 * \brief Issue a command on a resource
@@ -100,8 +117,10 @@ typedef struct lrmd_api_operations_s
 		int interval, /* ms */
 		int timeout, /* ms */
 		int start_delay, /* ms */
-		GHashTable *params,
+		enum lrmd_call_options,
+		GHashTable *params, /* TODO make this not glib */
 		void *userdata,
+		/* TODO we can't use the svc_action_t type here, it uses glib */
 		void (*callback)(lrmd_t *lrmd, int call_id, svc_action_t *result, void *userdata));
 
 	/*!
@@ -110,14 +129,8 @@ typedef struct lrmd_api_operations_s
 	 * \retval 0, cancel command sent.
 	 * \retval -1, cancel command failed.
 	 */
-	/* TODO IMPLEMENT */
+	/* TODO IMPLEMENT add callback for cancel. */
 	int (*cancel)(lrmd_t *lrmd, const char *call_id);
-
-	/* TODO IMPLEMENT */
-	lrmd_rsc_history_t *(*rsc_history)(lrmd_t *lrmd, const char *rsc_id);
-
-	/* TODO IMPLEMENT */
-	int (*rsc_history_clear_failures)(lrmd_t *lrmd);
 
 } lrmd_api_operations_t;
 

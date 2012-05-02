@@ -42,7 +42,7 @@ dump_xml(const char *description, xmlNode *request)
 #endif
 
 static gboolean
-process_lrmd_register(lrmd_client_t *client, xmlNode *request)
+process_lrmd_signon(lrmd_client_t *client, xmlNode *request)
 {
 	xmlNode *reply = create_xml_node(NULL, "reply");
 	crm_xml_add(reply, F_LRMD_OPERATION, CRM_OP_REGISTER);
@@ -62,7 +62,7 @@ gboolean process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 	dump_xml("request", request);
 #endif
 	if (crm_str_eq(op, CRM_OP_REGISTER, TRUE)) {
-		return process_lrmd_register(client, request);
+		return process_lrmd_signon(client, request);
 	} else {
 		crm_err("Unknown %s from %s", op, client->name);
 		crm_log_xml_warn(request, "UnknownOp");

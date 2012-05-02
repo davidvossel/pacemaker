@@ -42,6 +42,7 @@ typedef struct lrmd_private_s {
 	char *token;
 	crm_ipc_t *ipc;
 	mainloop_ipc_t *source;
+	int call_id;
 } lrmd_private_t;
 
 static int
@@ -55,26 +56,6 @@ static void
 lrmd_connection_destroy(gpointer user_data)
 {
 	crm_info("connection destroyed");
-}
-
-static int
-lrmd_api_disconnect(lrmd_t * lrmd)
-{
-	lrmd_private_t *native = lrmd->private;
-
-	crm_info("Disconnecting from lrmd service");
-
-	if (native->source) {
-		mainloop_del_ipc_client(native->source);
-		native->source = NULL;
-		native->ipc = NULL;
-	} else if (native->ipc != NULL) {
-		crm_ipc_close(native->ipc);
-		crm_ipc_destroy(native->ipc);
-		native->ipc = NULL;
-	}
-
-	return 0;
 }
 
 #ifdef _TEST // TODO all the code in the _TEST defines will go away.
@@ -164,6 +145,187 @@ lrmd_api_connect(lrmd_t * lrmd, const char *name, int *lrmd_fd)
 	return rc;
 }
 
+static int
+lrmd_api_disconnect(lrmd_t * lrmd)
+{
+	lrmd_private_t *native = lrmd->private;
+
+	crm_info("Disconnecting from lrmd service");
+
+	if (native->source) {
+		mainloop_del_ipc_client(native->source);
+		native->source = NULL;
+		native->ipc = NULL;
+	} else if (native->ipc != NULL) {
+		crm_ipc_close(native->ipc);
+		crm_ipc_destroy(native->ipc);
+		native->ipc = NULL;
+	}
+
+	return 0;
+}
+
+static xmlNode *
+lrmd_create_op(int call_id,
+	const char *token,
+	const char *op, xmlNode *data,
+	enum lrmd_call_options options)
+{
+	xmlNode *op_msg = create_xml_node(NULL, "lrmd_command");
+
+	CRM_CHECK(op_msg != NULL, return NULL);
+	CRM_CHECK(token != NULL, return NULL);
+
+	crm_xml_add(op_msg, F_XML_TAGNAME, "lrmd_command");
+
+	crm_xml_add(op_msg, F_TYPE, T_LRMD);
+	crm_xml_add(op_msg, F_LRMD_CALLBACK_TOKEN, token);
+	crm_xml_add(op_msg, F_LRMD_OPERATION, op);
+	crm_xml_add_int(op_msg, F_LRMD_CALLID, call_id);
+	crm_trace("Sending call options: %.8lx, %d", (long)options, options);
+	crm_xml_add_int(op_msg, F_LRMD_CALLOPTS, options);
+
+	if (data != NULL) {
+		add_message_xml(op_msg, F_LRMD_CALLDATA, data);
+	}
+
+	return op_msg;
+}
+
+static int
+lrmd_send_command(lrmd_t * lrmd,
+	const char *op,
+	xmlNode *data,
+	xmlNode **output_data,
+	int timeout,
+	enum lrmd_call_options options)
+{
+	int rc = lrmd_ok;
+    int reply_id = -1;
+	lrmd_private_t *native = lrmd->private;
+	xmlNode *op_msg = NULL;
+	xmlNode *op_reply = NULL;
+
+	if (!native->ipc) {
+		return lrmd_err_connection;
+	}
+
+	if (op == NULL) {
+		crm_err("No operation specified");
+		return lrmd_err_missing;
+	}
+
+	native->call_id++;
+	if (native->call_id < 1) {
+		native->call_id = 1;
+	}
+
+	CRM_CHECK(native->token != NULL,;);
+
+	op_msg = lrmd_create_op(native->call_id,
+		native->token,
+		op,
+		data,
+		options);
+
+	if (op_msg == NULL) {
+		return lrmd_err_missing;
+	}
+
+	crm_xml_add_int(op_msg, F_LRMD_TIMEOUT, timeout);
+
+	rc = crm_ipc_send(native->ipc, op_msg, &op_reply, timeout);
+	free_xml(op_msg);
+
+	if (rc < 0) {
+		crm_perror(LOG_ERR, "Couldn't perform %s operation (timeout=%d): %d", op, timeout, rc);
+		rc = lrmd_err_ipc;
+		goto done;
+	}
+
+	if (!(options & lrmd_opt_sync_call)) {
+		crm_trace("Async call, returning");
+		CRM_CHECK(native->call_id != 0, return lrmd_err_internal);
+		free_xml(op_reply);
+
+		return native->call_id;
+	}
+
+	rc = lrmd_ok;
+	crm_element_value_int(op_reply, F_LRMD_CALLID, &reply_id);
+	if (reply_id == native->call_id) {
+		crm_trace("Syncronous reply received");
+		if (crm_element_value_int(op_reply, F_LRMD_RC, &rc) != 0) {
+			rc = lrmd_err_peer;
+			goto done;
+		}
+
+		if (output_data) {
+			*output_data = op_reply;
+			op_reply = NULL; /* Prevent subsequent free */
+		}
+
+	} else if (reply_id <= 0) {
+		crm_err("Recieved bad reply: No id set");
+		crm_log_xml_err(op_reply, "Bad reply");
+		free_xml(op_reply);
+		rc = lrmd_err_peer;
+	} else {
+		crm_err("Recieved bad reply: %d (wanted %d)", reply_id, native->call_id);
+		crm_log_xml_err(op_reply, "Old reply");
+		free_xml(op_reply);
+		rc = lrmd_err_peer;
+	}
+
+	crm_log_xml_trace(op_reply, "Reply");
+
+done:
+	if (crm_ipc_connected(native->ipc) == FALSE) {
+		crm_err("LRMD disconnected");
+	}
+
+	free_xml(op_reply);
+	return rc;
+}
+
+static int
+lrmd_api_register_rsc(lrmd_t *lrmd,
+		const char *rsc_id,
+		const char *class,
+		const char *provider,
+		const char *type,
+		enum lrmd_call_options options)
+{
+	int rc = lrmd_ok;
+	xmlNode *data = create_xml_node(NULL, F_LRMD_RSC);
+
+	crm_xml_add(data, F_LRMD_ORIGIN, __FUNCTION__);
+	crm_xml_add(data, F_LRMD_RSC_ID, rsc_id);
+	crm_xml_add(data, F_LRMD_CLASS, class);
+	crm_xml_add(data, F_LRMD_PROVIDER, provider);
+	crm_xml_add(data, F_LRMD_TYPE, type);
+	rc = lrmd_send_command(lrmd, LRMD_OP_RSC_REG, data, NULL, 0, options);
+	free_xml(data);
+
+	return rc;
+}
+
+static int
+lrmd_api_unregister_rsc(lrmd_t *lrmd,
+	const char *rsc_id,
+	enum lrmd_call_options options)
+{
+	int rc = lrmd_ok;
+	xmlNode *data = create_xml_node(NULL, F_LRMD_RSC);
+
+	crm_xml_add(data, F_LRMD_ORIGIN, __FUNCTION__);
+	crm_xml_add(data, F_LRMD_RSC_ID, rsc_id);
+	rc = lrmd_send_command(lrmd, LRMD_OP_RSC_UNREG, data, NULL, 0, options);
+	free_xml(data);
+
+	return rc;
+}
+
 lrmd_t *
 lrmd_api_new(void)
 {
@@ -178,11 +340,14 @@ lrmd_api_new(void)
 
 	new_lrmd->cmds->connect = lrmd_api_connect;
 	new_lrmd->cmds->disconnect = lrmd_api_disconnect;
+	new_lrmd->cmds->register_rsc = lrmd_api_register_rsc;
+	new_lrmd->cmds->unregister_rsc = lrmd_api_unregister_rsc;
 
 	return new_lrmd;
 }
 
-void lrmd_api_delete(lrmd_t * lrmd)
+void
+lrmd_api_delete(lrmd_t * lrmd)
 {
 	lrmd_private_t *private = lrmd->private;
 
