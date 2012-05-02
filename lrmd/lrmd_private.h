@@ -22,7 +22,18 @@
 
 #include <glib.h>
 #include <crm/common/ipc.h>
+#include <crm/lrmd.h>
 
-gboolean process_lrmd_message(xmlNode *msg, xmlNode *xml_data, qb_ipcs_connection_t *sender);
+typedef struct lrmd_client_s {
+	char *id;
+	char *name;
+
+	qb_ipcs_connection_t *channel;
+
+	long long flags;
+
+} lrmd_client_t;
+
+gboolean process_lrmd_message(lrmd_client_t *client, xmlNode *request);
 
 #endif

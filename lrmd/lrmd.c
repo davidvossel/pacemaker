@@ -17,6 +17,8 @@
  *
  */
 
+#include <crm_internal.h>
+
 #include <glib.h>
 #include <unistd.h>
 
@@ -27,9 +29,44 @@
 
 #include <lrmd_private.h>
 
-
-gboolean process_lrmd_message(xmlNode *msg, xmlNode *xml_data, qb_ipcs_connection_t *sender)
+#ifdef _TEST
+static void
+dump_xml(const char *description, xmlNode *request)
 {
+	char *dump;
+
+	dump = request ? dump_xml_formatted(request) : NULL;
+	crm_info("%s = %s", description, dump);
+	crm_free(dump);
+}
+#endif
+
+static gboolean
+process_lrmd_register(lrmd_client_t *client, xmlNode *request)
+{
+	xmlNode *reply = create_xml_node(NULL, "reply");
+	crm_xml_add(reply, F_LRMD_OPERATION, CRM_OP_REGISTER);
+	crm_xml_add(reply, F_LRMD_CLIENTID,  client->id);
+	crm_ipcs_send(client->channel, reply, FALSE);
+
+	free_xml(reply);
+	return TRUE;
+}
+
+gboolean process_lrmd_message(lrmd_client_t *client, xmlNode *request)
+{
+	const char *op = crm_element_value(request, F_LRMD_OPERATION);
+
+#ifdef _TEST
+	crm_info("processing client request");
+	dump_xml("request", request);
+#endif
+	if (crm_str_eq(op, CRM_OP_REGISTER, TRUE)) {
+		return process_lrmd_register(client, request);
+	} else {
+		crm_err("Unknown %s from %s", op, client->name);
+		crm_log_xml_warn(request, "UnknownOp");
+	}
 
 	return TRUE;
 }

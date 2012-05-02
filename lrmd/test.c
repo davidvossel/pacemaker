@@ -17,6 +17,8 @@
  *
  */
 
+#include <crm_internal.h>
+
 #include <glib.h>
 #include <unistd.h>
 
@@ -32,6 +34,7 @@ int main(int argc, char ** argv)
 	int rc = 0;
 	int fd = 0;
 
+	crm_log_init("lrmd_ctest", LOG_INFO, TRUE, FALSE, argc, argv);
 	lrmd_conn = lrmd_api_new();
 	rc = lrmd_conn->cmds->connect(lrmd_conn, "lrmd_ctest", &fd);
 

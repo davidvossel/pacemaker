@@ -18,6 +18,7 @@
  */
 
 #include <crm_internal.h>
+
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -38,6 +39,7 @@
 CRM_TRACE_INIT_DATA(lrmd);
 
 typedef struct lrmd_private_s {
+	char *token;
 	crm_ipc_t *ipc;
 	mainloop_ipc_t *source;
 } lrmd_private_t;
@@ -75,10 +77,23 @@ lrmd_api_disconnect(lrmd_t * lrmd)
 	return 0;
 }
 
+#ifdef _TEST // TODO all the code in the _TEST defines will go away.
+/*
+static void dump_xml(const char *description, xmlNode *msg)
+{
+	char *dump;
+
+	dump = msg ? dump_xml_formatted(msg) : NULL;
+	crm_info("%s = %s", description, dump);
+	crm_free(dump);
+}
+*/
+#endif
+
 static int
 lrmd_api_connect(lrmd_t * lrmd, const char *name, int *lrmd_fd)
 {
-	int rc = 0;
+	int rc = lrmd_ok;
 	lrmd_private_t *native = lrmd->private;
 	static struct ipc_client_callbacks lrmd_callbacks = {
 		.dispatch = lrmd_dispatch_internal,
@@ -93,7 +108,7 @@ lrmd_api_connect(lrmd_t * lrmd, const char *name, int *lrmd_fd)
 		if (native->ipc && crm_ipc_connect(native->ipc)) {
 			*lrmd_fd = crm_ipc_get_fd(native->ipc);
 		} else if (native->ipc) {
-			rc = -1;
+			rc = lrmd_err_connection;
 		}
 
 	} else {
@@ -104,23 +119,44 @@ lrmd_api_connect(lrmd_t * lrmd, const char *name, int *lrmd_fd)
 
 	if (native->ipc == NULL) {
 		crm_debug("Could not connect to the LRMD API");
-		rc = -1;
+		rc = lrmd_err_connection;
 	}
 
 	if (!rc) {
 		xmlNode *reply = NULL;
 		xmlNode *hello = create_xml_node(NULL, "lrmd_command");
 
+		crm_xml_add(hello, F_TYPE, T_LRMD);
+		crm_xml_add(hello, F_LRMD_OPERATION, CRM_OP_REGISTER);
+		crm_xml_add(hello, F_LRMD_CLIENTNAME, name);
+
 		rc = crm_ipc_send(native->ipc, hello, &reply, -1);
 
 		if (rc < 0) {
 			crm_perror(LOG_DEBUG, "Couldn't complete registration with the lrmd API: %d", rc);
+			rc = lrmd_err_ipc;
 		} else if(reply == NULL) {
 			crm_err("Did not receive registration reply");
+			rc = lrmd_err_internal;
 		} else {
-			crm_info("lrmd client connected");
-			rc = 0;
+			const char *msg_type = crm_element_value(reply, F_LRMD_OPERATION);
+			const char *tmp_ticket = crm_element_value(reply, F_LRMD_CLIENTID);
+
+			if (safe_str_neq(msg_type, CRM_OP_REGISTER)) {
+				crm_err("Invalid registration message: %s", msg_type);
+				crm_log_xml_err(reply, "Bad reply");
+				rc = lrmd_err_internal;
+			} else if (tmp_ticket == NULL) {
+				crm_err("No registration token provided");
+				crm_log_xml_err(reply, "Bad reply");
+				rc = lrmd_err_internal;
+			} else {
+				crm_trace("Obtained registration token: %s", tmp_ticket);
+				native->token = crm_strdup(tmp_ticket);
+				rc = lrmd_ok;
+			}
 		}
+
 		free_xml(reply);
 		free_xml(hello);
 	}
@@ -148,6 +184,10 @@ lrmd_api_new(void)
 
 void lrmd_api_delete(lrmd_t * lrmd)
 {
+	lrmd_private_t *private = lrmd->private;
+
+	lrmd->cmds->disconnect(lrmd); /* no-op if already disconnected */
+	crm_free(private->token);
 	crm_free(lrmd->private);
 	crm_free(lrmd);
 }
