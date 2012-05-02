@@ -84,8 +84,7 @@ typedef struct lrmd_api_operations_s
 		const char *rsc_id,
 		const char *class,
 		const char *provider,
-		const char *type,
-		GHashTable *params);
+		const char *type);
 
 	/* TODO IMPLEMENT */
 	GList* (*list_rscs)(lrmd_t *lrmd);
@@ -98,9 +97,10 @@ typedef struct lrmd_api_operations_s
 	int (*call)(lrmd_t *lrmd,
 		const char *rsc_id,
 		const char *action,
-		int interval,
-		int start_delay,
-		int timeout,
+		int interval, /* ms */
+		int timeout, /* ms */
+		int start_delay, /* ms */
+		GHashTable *params,
 		void *userdata,
 		void (*callback)(lrmd_t *lrmd, int call_id, svc_action_t *result, void *userdata));
 
