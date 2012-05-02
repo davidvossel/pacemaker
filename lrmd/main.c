@@ -59,7 +59,7 @@ lrmd_ipc_created(qb_ipcs_connection_t *c)
 	cl_uuid_unparse(&client_id, uuid_str);
 
 	new_client->id = crm_strdup(uuid_str);
-	crm_trace("Created channel %p for client %s", c, new_client->id);
+	crm_trace("LRMD client connection established. %p id: %s", c, new_client->id);
 
 	g_hash_table_insert(client_list, new_client->id, new_client);
 	qb_ipcs_context_set(c, new_client);
@@ -80,7 +80,8 @@ lrmd_ipc_dispatch(qb_ipcs_connection_t *c, void *data, size_t size)
 
 	if (!client->name) {
 		const char *value = crm_element_value(request, F_LRMD_CLIENTNAME);
-		if(value == NULL) {
+
+		if (value == NULL) {
 			client->name = crm_itoa(crm_ipcs_client_pid(c));
 		} else {
 			client->name = crm_strdup(value);
@@ -115,7 +116,17 @@ lrmd_ipc_closed(qb_ipcs_connection_t *c)
 static void
 lrmd_ipc_destroy(qb_ipcs_connection_t *c)
 {
-	crm_trace("Disconnecting %p", c);
+	lrmd_client_t *client = (lrmd_client_t *) qb_ipcs_context_get(c);
+
+	if (!client) {
+		crm_err("No client for ipc");
+		return;
+	}
+
+	crm_info("LRMD client disconnecting %p - name: %s id: %s", c, client->name, client->id);
+	crm_free(client->name);
+	crm_free(client->id);
+	crm_free(client);
 }
 
 static struct qb_ipcs_service_handlers lrmd_ipc_callbacks =
