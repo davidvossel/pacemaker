@@ -20,6 +20,8 @@
 #ifndef LRMD__H
 #define LRMD__H
 
+#include <crm/services.h>
+
 typedef struct lrmd_s lrmd_t;
 
 #define F_LRMD_OPERATION		"lrmd_op"
@@ -30,39 +32,93 @@ typedef struct lrmd_s lrmd_t;
 
 //#define _TEST // TODO remove all references to this define.
 enum lrmd_errors {
-    lrmd_ok				=  0,
-    lrmd_pending			= -1,
-    lrmd_err_generic			= -2,
-    lrmd_err_internal			= -3,
-    lrmd_err_not_supported		= -4,
-    lrmd_err_connection			= -5,
-    lrmd_err_missing			= -6,
-    lrmd_err_exists			= -7,
-    lrmd_err_timeout			= -8,
-    lrmd_err_ipc				= -9,
+	lrmd_ok				=  0,
+	lrmd_pending			= -1,
+	lrmd_err_generic			= -2,
+	lrmd_err_internal			= -3,
+	lrmd_err_not_supported		= -4,
+	lrmd_err_connection			= -5,
+	lrmd_err_missing			= -6,
+	lrmd_err_exists			= -7,
+	lrmd_err_timeout			= -8,
+	lrmd_err_ipc				= -9,
 /*
-    lrmd_err_peer				= -10,
-    lrmd_err_unknown_operation		= -11,
-    lrmd_err_unknown_device		= -12,
-    lrmd_err_unknown_port			= -13,
-    lrmd_err_none_available		= -14,
-    lrmd_err_authentication		= -15,
-    lrmd_err_signal			= -16,
-    lrmd_err_agent_fork			= -17,
-    lrmd_err_agent_args			= -18,
-    lrmd_err_agent			= -19,
-    lrmd_err_invalid_target		= -20,
-    lrmd_err_invalid_level		= -21,
+	lrmd_err_peer				= -10,
+	lrmd_err_unknown_operation		= -11,
+	lrmd_err_unknown_rsc		= -12,
+	lrmd_err_unknown_port			= -13,
+	lrmd_err_none_available		= -14,
+	lrmd_err_authentication		= -15,
+	lrmd_err_signal			= -16,
+	lrmd_err_agent_fork			= -17,
+	lrmd_err_agent_args			= -18,
+	lrmd_err_agent			= -19,
+	lrmd_err_invalid_target		= -20,
+	lrmd_err_invalid_level		= -21,
 */
 };
+
+typedef struct lrmd_rsc_history_s {
+	/*! Last failed operation */
+	svc_action_t *failed;
+	/*! Last successful non-recurring operation result */
+	svc_action_t *last;
+	/*! Last successful result for each recurring operation. */
+	GList *recurring;
+} lrmd_rsc_history_t;
 
 extern lrmd_t *lrmd_api_new(void);
 extern void lrmd_api_delete(lrmd_t * lrmd);
 
 typedef struct lrmd_api_operations_s
 {
-	int (*connect) (lrmd_t *lrmd, const char *name, int *lrmd_fd);
+	int (*connect) (lrmd_t *lrmd, const char *client_name, int *lrmd_fd);
+
 	int (*disconnect)(lrmd_t *lrmd);
+
+	/* TODO IMPLEMENT */
+	int (*remove_rsc) (lrmd_t *lrmd, const char *rsc_id);
+
+	/* TODO IMPLEMENT */
+	int (*register_rsc) (lrmd_t *lrmd,
+		const char *rsc_id,
+		const char *class,
+		const char *provider,
+		const char *type,
+		GHashTable *params);
+
+	/* TODO IMPLEMENT */
+	GList* (*list_rscs)(lrmd_t *lrmd);
+
+	/*!
+	 * \brief Issue a command on a resource
+	 * \retval call id of the command, -1 on failure
+	 */
+	/* TODO IMPLEMENT */
+	int (*call)(lrmd_t *lrmd,
+		const char *rsc_id,
+		const char *action,
+		int interval,
+		int start_delay,
+		int timeout,
+		void *userdata,
+		void (*callback)(lrmd_t *lrmd, int call_id, svc_action_t *result, void *userdata));
+
+	/*!
+	 * \brief Cancel a recurring command.
+	 *
+	 * \retval 0, cancel command sent.
+	 * \retval -1, cancel command failed.
+	 */
+	/* TODO IMPLEMENT */
+	int (*cancel)(lrmd_t *lrmd, const char *call_id);
+
+	/* TODO IMPLEMENT */
+	lrmd_rsc_history_t *(*rsc_history)(lrmd_t *lrmd, const char *rsc_id);
+
+	/* TODO IMPLEMENT */
+	int (*rsc_history_clear_failures)(lrmd_t *lrmd);
+
 } lrmd_api_operations_t;
 
 struct lrmd_s {
