@@ -1587,24 +1587,26 @@ stonith_send_command(stonith_t * stonith, const char *op, xmlNode * data, xmlNod
         free_xml(op_reply);
 
         return stonith->call_id;
-
-    } else if ((call_options & st_opt_discard_reply) || output_data == NULL) {
-        crm_trace("Discarding reply");
-        free_xml(op_reply);
-        return stonith_ok;
     }
 
     rc = stonith_ok;
     crm_element_value_int(op_reply, F_STONITH_CALLID, &reply_id);
+
     if (reply_id == stonith->call_id) {
-        crm_trace("Syncronous reply received");
+        crm_trace("Syncronous reply %d received", reply_id);
+
         if (crm_element_value_int(op_reply, F_STONITH_RC, &rc) != 0) {
             rc = st_err_peer;
         }
 
-        *output_data = op_reply;
-        op_reply = NULL; /* Prevent subsequent free */
+        if ((call_options & st_opt_discard_reply) || output_data == NULL) {
+            crm_trace("Discarding reply");
 
+        } else {
+            *output_data = op_reply;
+            op_reply = NULL; /* Prevent subsequent free */
+        }
+        
     } else if (reply_id <= 0) {
         crm_err("Recieved bad reply: No id set");
         crm_log_xml_err(op_reply, "Bad reply");
