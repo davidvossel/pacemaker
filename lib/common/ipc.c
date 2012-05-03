@@ -168,9 +168,10 @@ crm_ipcs_recv(qb_ipcs_connection_t *c, void *data, size_t size)
 }
 
 ssize_t
-crm_ipcs_send(qb_ipcs_connection_t *c, xmlNode *message, gboolean event)
+crm_ipcs_send(qb_ipcs_connection_t *c, xmlNode *message, enum ipcs_send_flags flags)
 {
     int rc;
+    int lpc = 0;
     struct iovec iov[2];
     static uint32_t id = 0;
     const char *type = "Response";
@@ -184,18 +185,36 @@ crm_ipcs_send(qb_ipcs_connection_t *c, xmlNode *message, gboolean event)
 
     header.id = id++; /* We don't really use it, but doesn't hurt to set one */
     header.error = 0; /* unused */
-    header.size = iov[0].iov_len + iov[1].iov_len;    
-    
-    if(event) {
-        rc = qb_ipcs_event_sendv(c, iov, 2);
-        type = "Event";
+    header.size = iov[0].iov_len + iov[1].iov_len;
 
-    } else {
-        rc = qb_ipcs_response_sendv(c, iov, 2);
-    }
+    do {
+        if(flags & ipcs_send_event) {
+            rc = qb_ipcs_event_sendv(c, iov, 2);
+            type = "Event";
+            
+        } else {
+            rc = qb_ipcs_response_sendv(c, iov, 2);
+        }
+
+        if(rc != -EAGAIN) {
+            break;
+        } else if(lpc > 3 && (flags & ipcs_send_error)) {
+            break;
+        }
+
+        crm_debug("Attempting resend %d of %s %d (%d bytes) to %p[%d]: %.120s",
+                  ++lpc, type, header.id, header.size, c, crm_ipcs_client_pid(c), buffer);
+        sleep(1);
+
+        /* Only retry for important stuff, and even then only a limited amount for ipcs_send_error
+         * Unless ipcs_send_info or ipcs_send_error is specified, we block by default
+         */
+    } while((flags & ipcs_send_info) == 0);
 
     if(rc <= 0) {
-        crm_info("%s failed, to=%p[%d], rc=%d: %.120s", type, c, crm_ipcs_client_pid(c), rc, buffer);
+        do_crm_log((flags & ipcs_send_error)?LOG_ERR:LOG_INFO,
+                   "%s %d failed, to=%p[%d], rc=%d: %.120s",
+                   type, header.id, c, crm_ipcs_client_pid(c), rc, buffer);
     } else {
         crm_trace("%s %d sent, %d bytes to %p: %.120s", type, header.id, rc, c, buffer);
     }
