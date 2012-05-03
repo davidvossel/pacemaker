@@ -43,6 +43,25 @@ dump_xml(const char *description, xmlNode *request)
 }
 #endif
 
+static void
+send_reply(lrmd_client_t *client, int rc, int call_id)
+{
+	int send_rc = 0;
+	xmlNode *reply = NULL;
+
+	reply = create_xml_node(NULL, T_LRMD_REPLY);
+	crm_xml_add(reply, F_LRMD_ORIGIN, __FUNCTION__);
+	crm_xml_add_int(reply, F_LRMD_RC, rc);
+	crm_xml_add_int(reply, F_LRMD_CALLID, call_id);
+
+	send_rc = crm_ipcs_send(client->channel, reply, FALSE);
+
+	free_xml(reply);
+	if (send_rc < 0)  {
+		crm_warn("LRMD reply to %s failed: %d", client->name, send_rc);
+	}
+}
+
 static gboolean
 lrmd_rsc_execute(lrmd_rsc_t *rsc)
 {
@@ -56,18 +75,6 @@ lrmd_rsc_dispatch(gpointer user_data)
 	return lrmd_rsc_execute(user_data);
 }
 
-static int
-process_lrmd_signon(lrmd_client_t *client, xmlNode *request)
-{
-	xmlNode *reply = create_xml_node(NULL, "reply");
-	crm_xml_add(reply, F_LRMD_OPERATION, CRM_OP_REGISTER);
-	crm_xml_add(reply, F_LRMD_CLIENTID,  client->id);
-	crm_ipcs_send(client->channel, reply, FALSE);
-
-	free_xml(reply);
-	return lrmd_ok;
-}
-
 void
 free_rsc(gpointer data)
 {
@@ -78,6 +85,8 @@ free_rsc(gpointer data)
 	crm_free(rsc->provider);
 	crm_free(rsc->type);
 	mainloop_destroy_trigger(rsc->work);
+
+	crm_free(rsc);
 }
 
 static lrmd_rsc_t *
@@ -96,6 +105,18 @@ build_rsc_from_xml(xmlNode *msg)
 }
 
 static int
+process_lrmd_signon(lrmd_client_t *client, xmlNode *request)
+{
+	xmlNode *reply = create_xml_node(NULL, "reply");
+	crm_xml_add(reply, F_LRMD_OPERATION, CRM_OP_REGISTER);
+	crm_xml_add(reply, F_LRMD_CLIENTID,  client->id);
+	crm_ipcs_send(client->channel, reply, FALSE);
+
+	free_xml(reply);
+	return lrmd_ok;
+}
+
+static int
 process_lrmd_rsc_register(lrmd_client_t *client, xmlNode *request)
 {
 	int rc = lrmd_ok;
@@ -108,23 +129,26 @@ process_lrmd_rsc_register(lrmd_client_t *client, xmlNode *request)
 	return rc;
 }
 
-static void
-send_reply(lrmd_client_t *client, int rc, int call_id)
+static int
+process_lrmd_rsc_unregister(lrmd_client_t *client, xmlNode *request)
 {
-	int send_rc = 0;
-	xmlNode *reply = NULL;
+	int rc = lrmd_ok;
+	xmlNode *dev = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
+	const char *rsc_id = crm_element_value(dev, F_LRMD_RSC_ID);
 
-	reply = create_xml_node(NULL, T_LRMD_REPLY);
-	crm_xml_add(reply, F_LRMD_ORIGIN, __FUNCTION__);
-	crm_xml_add_int(reply, F_LRMD_RC, rc);
-	crm_xml_add_int(reply, F_LRMD_CALLID, call_id);
-
-	send_rc = crm_ipcs_send(client->channel, reply, FALSE);
-
-	free_xml(reply);
-	if (send_rc < 0)  {
-		crm_warn("LRMD reply to %s failed: %d", client->name, send_rc);
+	if (!rsc_id) {
+		return lrmd_err_unknown_rsc;
 	}
+
+	if (g_hash_table_remove(rsc_list, rsc_id)) {
+		crm_info("Removed '%s' from the resource list (%d active resources)",
+			rsc_id, g_hash_table_size(rsc_list));
+	} else {
+		crm_info("Resource '%s' not found (%d active resources)",
+			rsc_id, g_hash_table_size(rsc_list));
+	}
+
+	return rc;
 }
 
 void
@@ -149,6 +173,8 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 		do_reply = 0;
 	} else if (crm_str_eq(op, LRMD_OP_RSC_REG, TRUE)) {
 		rc = process_lrmd_rsc_register(client, request);
+	} else if (crm_str_eq(op, LRMD_OP_RSC_UNREG, TRUE)) {
+		rc = process_lrmd_rsc_unregister(client, request);
 	} else {
 		rc = lrmd_err_unknown_operation;
 		crm_err("Unknown %s from %s", op, client->name);

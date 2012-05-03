@@ -89,7 +89,6 @@ typedef struct lrmd_api_operations_s
 		const char *type,
 		enum lrmd_call_options options);
 
-	/* TODO IMPLEMENT */
 	int (*unregister_rsc) (lrmd_t *lrmd,
 		const char *rsc_id,
 		enum lrmd_call_options options);

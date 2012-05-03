@@ -53,6 +53,13 @@ int main(int argc, char ** argv)
 		return -1;
 	}
 
+	rc = lrmd_conn->cmds->unregister_rsc(lrmd_conn, "test_rsc", 0);
+	if (!rc) {
+		printf("unregistered resource\n");
+	} else {
+		printf("failed to unregister resource\n");
+		return -1;
+	}
 
 
 	lrmd_api_delete(lrmd_conn);
