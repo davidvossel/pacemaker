@@ -380,12 +380,7 @@ cib_native_perform_op_delegate(cib_t * cib, const char *op, const char *host, co
         crm_trace("Async call, returning %d", cib->call_id);
         CRM_CHECK(cib->call_id != 0, return cib_reply_failed);
         free_xml(op_reply);
-
         return cib->call_id;
-    } else if (output_data == NULL || (call_options & cib_discard_reply)) {
-        crm_trace("Discarding reply");
-        free_xml(op_reply);
-        return cib_ok;
     }
 
     rc = cib_ok;
@@ -393,12 +388,15 @@ cib_native_perform_op_delegate(cib_t * cib, const char *op, const char *host, co
     if (reply_id == cib->call_id) {
         xmlNode *tmp = get_message_xml(op_reply, F_CIB_CALLDATA);
 
-        crm_trace("Syncronous reply received");
+        crm_trace("Syncronous reply %d received", reply_id);
         if (crm_element_value_int(op_reply, F_CIB_RC, &rc) != 0) {
             rc = cib_return_code;
         }
 
-        if (tmp != NULL) {
+        if (output_data == NULL || (call_options & cib_discard_reply)) {
+            crm_trace("Discarding reply");
+
+        } else if (tmp != NULL) {
             *output_data = copy_xml(tmp);
         }
 
