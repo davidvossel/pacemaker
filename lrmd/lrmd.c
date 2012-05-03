@@ -32,18 +32,6 @@
 GHashTable *rsc_list = NULL;
 GHashTable *client_list = NULL;
 
-#ifdef _TEST
-static void
-dump_xml(const char *description, xmlNode *request)
-{
-	char *dump;
-
-	dump = request ? dump_xml_formatted(request) : NULL;
-	crm_info("%s = %s", description, dump);
-	crm_free(dump);
-}
-#endif
-
 static void
 send_reply(lrmd_client_t *client, int rc, int call_id)
 {
@@ -209,11 +197,6 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 
 	crm_element_value_int(request, F_LRMD_CALLOPTS, &call_options);
 	crm_element_value_int(request, F_LRMD_CALLID, &call_id);
-
-#ifdef _TEST
-	crm_info("processing client request");
-	dump_xml("request", request);
-#endif
 
 	if (crm_str_eq(op, CRM_OP_REGISTER, TRUE)) {
 		rc = process_lrmd_signon(client, request);
