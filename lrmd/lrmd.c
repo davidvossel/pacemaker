@@ -30,6 +30,7 @@
 #include <lrmd_private.h>
 
 GHashTable *rsc_list = NULL;
+GHashTable *client_list = NULL;
 
 #ifdef _TEST
 static void
@@ -60,6 +61,52 @@ send_reply(lrmd_client_t *client, int rc, int call_id)
 	if (send_rc < 0)  {
 		crm_warn("LRMD reply to %s failed: %d", client->name, send_rc);
 	}
+}
+
+static void
+send_client_notify(gpointer key, gpointer value, gpointer user_data)
+{
+	xmlNode *update_msg = user_data;
+	lrmd_client_t *client = value;
+
+	if (client == NULL) {
+		crm_trace("Skipping NULL client");
+		return;
+	} else if (client->channel == NULL) {
+		crm_trace("Skipping client with NULL channel");
+		return;
+	} else if (client->name == NULL) {
+		crm_trace("Skipping unnammed client / comamnd channel");
+		return;
+	}
+
+	if (crm_ipcs_send(client->channel, update_msg, TRUE) <= 0) {
+		crm_warn("Notification of client %s/%s failed",
+			client->name, client->id);
+	}
+}
+
+static void
+send_notify(lrmd_client_t *client, int rc, xmlNode *request)
+{
+	int call_id = 0;
+	xmlNode *notify = NULL;
+	xmlNode *rsc = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
+	const char *rsc_id = crm_element_value(rsc, F_LRMD_RSC_ID);
+	const char *op = crm_element_value(request, F_LRMD_OPERATION);
+
+	crm_element_value_int(request, F_LRMD_CALLID, &call_id);
+
+	notify = create_xml_node(NULL, T_LRMD_NOTIFY);
+	crm_xml_add(notify, F_LRMD_ORIGIN, __FUNCTION__);
+	crm_xml_add_int(notify, F_LRMD_RC, rc);
+	crm_xml_add_int(notify, F_LRMD_CALLID, call_id);
+	crm_xml_add(notify, F_LRMD_OPERATION, op);
+	crm_xml_add(notify, F_LRMD_RSC_ID, rsc_id);
+
+	g_hash_table_foreach(client_list, send_client_notify, notify);
+
+	crm_free(notify);
 }
 
 static gboolean
@@ -133,8 +180,8 @@ static int
 process_lrmd_rsc_unregister(lrmd_client_t *client, xmlNode *request)
 {
 	int rc = lrmd_ok;
-	xmlNode *dev = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
-	const char *rsc_id = crm_element_value(dev, F_LRMD_RSC_ID);
+	xmlNode *rsc = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
+	const char *rsc_id = crm_element_value(rsc, F_LRMD_RSC_ID);
 
 	if (!rsc_id) {
 		return lrmd_err_unknown_rsc;
@@ -173,8 +220,10 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 		do_reply = 0;
 	} else if (crm_str_eq(op, LRMD_OP_RSC_REG, TRUE)) {
 		rc = process_lrmd_rsc_register(client, request);
+		send_notify(client, rc, request);
 	} else if (crm_str_eq(op, LRMD_OP_RSC_UNREG, TRUE)) {
 		rc = process_lrmd_rsc_unregister(client, request);
+		send_notify(client, rc, request);
 	} else {
 		rc = lrmd_err_unknown_operation;
 		crm_err("Unknown %s from %s", op, client->name);

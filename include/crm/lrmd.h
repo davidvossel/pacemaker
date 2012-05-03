@@ -45,9 +45,13 @@ typedef struct lrmd_s lrmd_t;
 #define F_LRMD_RSC	"lrmd_rsc"
 
 #define T_LRMD		"lrmd"
-#define T_LRMD_REPLY	"lrmd-reply"
+#define T_LRMD_REPLY	"lrmd_reply"
+#define T_LRMD_NOTIFY	"lrmd_notify"
 
 //#define _TEST // TODO remove all references to this define.
+
+extern lrmd_t *lrmd_api_new(void);
+extern void lrmd_api_delete(lrmd_t * lrmd);
 
 enum lrmd_call_options {
 	lrmd_opt_none		= 0x00000000,
@@ -73,8 +77,18 @@ enum lrmd_errors {
 	lrmd_err_signal				= -15,
 };
 
-extern lrmd_t *lrmd_api_new(void);
-extern void lrmd_api_delete(lrmd_t * lrmd);
+enum lrmd_callback_event {
+	lrmd_event_register,
+	lrmd_event_unregister,
+	lrmd_event_call_complete,
+};
+
+typedef struct lrmd_event_data_s {
+	enum lrmd_callback_event type;
+	int rc;
+} lrmd_event_data_t;
+
+typedef void (*lrmd_event_callback)(lrmd_event_data_t *event, void *userdata);
 
 typedef struct lrmd_api_operations_s
 {
@@ -93,6 +107,10 @@ typedef struct lrmd_api_operations_s
 		const char *rsc_id,
 		enum lrmd_call_options options);
 
+	int (*set_callback) (lrmd_t *lrmd,
+		void *userdata,
+		lrmd_event_callback callback);
+
 	/* TODO IMPLEMENT - come up with a list structure for this that isn't glib*/
 	void * (*list_rscs)(lrmd_t *lrmd);
 
@@ -108,10 +126,7 @@ typedef struct lrmd_api_operations_s
 		int timeout, /* ms */
 		int start_delay, /* ms */
 		enum lrmd_call_options,
-		GHashTable *params, /* TODO make this not glib */
-		void *userdata,
-		/* TODO we can't use the svc_action_t type here, it uses glib */
-		void (*callback)(lrmd_t *lrmd, int call_id, svc_action_t *result, void *userdata));
+		GHashTable *params); /* TODO make this not glib */
 
 	/*!
 	 * \brief Cancel a recurring command.

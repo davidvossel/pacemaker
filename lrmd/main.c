@@ -29,9 +29,7 @@
 
 #include <lrmd_private.h>
 
-
 GMainLoop *mainloop = NULL;
-GHashTable *client_list = NULL;
 qb_ipcs_service_t *ipcs = NULL;
 
 static int32_t

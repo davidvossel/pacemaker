@@ -24,44 +24,72 @@
 
 #include <crm/crm.h>
 #include <crm/services.h>
+#include <crm/common/mainloop.h>
 
 #include <crm/lrmd.h>
 
+GMainLoop *mainloop = NULL;
 lrmd_t *lrmd_conn = NULL;
+
+#define report_event(event)	\
+	if (!event->rc) {	\
+		crm_info("SUCCESS:"); \
+	} else {	\
+		crm_info("FAILURE:");	\
+	}	\
+
+static void
+test_shutdown(int nsig)
+{
+	lrmd_api_delete(lrmd_conn);
+}
+
+static void
+unregister_res(lrmd_event_data_t *event, void *userdata)
+{
+	report_event(event);
+}
+
+static void
+register_res(lrmd_event_data_t *event, void *userdata)
+{
+	report_event(event);
+	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, unregister_res);
+	lrmd_conn->cmds->unregister_rsc(lrmd_conn, "test_rsc", 0);
+}
+
+static gboolean
+start_test(gpointer user_data)
+{
+	int rc;
+
+	lrmd_conn = lrmd_api_new();
+	rc = lrmd_conn->cmds->connect(lrmd_conn, "lrmd_ctest", NULL);
+
+	if (!rc) {
+		crm_info("lrmd client connection established");
+	} else {
+		crm_info("lrmd client connection failed");
+	}
+
+	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, register_res);
+	lrmd_conn->cmds->register_rsc(lrmd_conn, "test_rsc", "ocf", "pacemaker", "Dummy", 0);
+	return 0;
+}
 
 int main(int argc, char ** argv)
 {
-	int rc = 0;
-	int fd = 0;
+	crm_trigger_t *trig;
 
 	crm_log_init("lrmd_ctest", LOG_INFO, TRUE, FALSE, argc, argv);
-	lrmd_conn = lrmd_api_new();
-	rc = lrmd_conn->cmds->connect(lrmd_conn, "lrmd_ctest", &fd);
 
-	if (!rc) {
-		printf("lrmd client connection established\n");
-	} else {
-		printf("lrmd client connection failed\n");
-		return -1;
-	}
+	trig = mainloop_add_trigger(G_PRIORITY_HIGH, start_test, NULL);
+	mainloop_set_trigger(trig);
+	mainloop_track_children(G_PRIORITY_HIGH);
+	mainloop_add_signal(SIGTERM, test_shutdown);
 
-	rc = lrmd_conn->cmds->register_rsc(lrmd_conn, "test_rsc", "ocf", "pacemaker", "Dummy", 0);
-	if (!rc) {
-		printf("registered resource\n");
-	} else {
-		printf("failed to register resource\n");
-		return -1;
-	}
+	crm_info("Starting");
+	mainloop = g_main_new(FALSE);
+	g_main_run(mainloop);
 
-	rc = lrmd_conn->cmds->unregister_rsc(lrmd_conn, "test_rsc", 0);
-	if (!rc) {
-		printf("unregistered resource\n");
-	} else {
-		printf("failed to unregister resource\n");
-		return -1;
-	}
-
-
-	lrmd_api_delete(lrmd_conn);
-	return 0;
 }

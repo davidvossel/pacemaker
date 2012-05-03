@@ -25,6 +25,7 @@
 #include <crm/lrmd.h>
 
 extern GHashTable *rsc_list;
+extern GHashTable *client_list;
 
 typedef struct lrmd_rsc_s {
 	char *rsc_id;
