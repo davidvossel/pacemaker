@@ -41,6 +41,7 @@ typedef struct lrmd_s lrmd_t;
 
 #define LRMD_OP_RSC_REG	"lrmd_rsc_register"
 #define LRMD_OP_RSC_UNREG	"lrmd_rsc_unregister"
+#define LRMD_OP_RSC_CALL	"lrmd_rsc_call"
 
 #define F_LRMD_RSC	"lrmd_rsc"
 
@@ -85,7 +86,9 @@ enum lrmd_callback_event {
 
 typedef struct lrmd_event_data_s {
 	enum lrmd_callback_event type;
+	const char *rsc_id;
 	int rc;
+	int call_id;
 } lrmd_event_data_t;
 
 typedef void (*lrmd_event_callback)(lrmd_event_data_t *event, void *userdata);
@@ -110,6 +113,13 @@ typedef struct lrmd_api_operations_s
 	int (*set_callback) (lrmd_t *lrmd,
 		void *userdata,
 		lrmd_event_callback callback);
+
+	/* TODO IMPLEMENT */
+	int (*get_metadata) (lrmd_t *lrmd,
+		const char *class,
+		const char *provider,
+		const char *type,
+		enum lrmd_call_options options);
 
 	/* TODO IMPLEMENT - come up with a list structure for this that isn't glib*/
 	void * (*list_rscs)(lrmd_t *lrmd);

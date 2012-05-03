@@ -31,6 +31,23 @@
 
 GHashTable *rsc_list = NULL;
 GHashTable *client_list = NULL;
+static gboolean lrmd_rsc_dispatch(gpointer user_data);
+
+
+static lrmd_rsc_t *
+build_rsc_from_xml(xmlNode *msg)
+{
+	xmlNode *dev = get_xpath_object("//"F_LRMD_RSC, msg, LOG_ERR);
+	lrmd_rsc_t *rsc = NULL;
+
+	crm_malloc0(rsc, sizeof(lrmd_rsc_t));
+	rsc->rsc_id = crm_element_value_copy(dev, F_LRMD_RSC_ID);
+	rsc->class = crm_element_value_copy(dev, F_LRMD_CLASS);
+	rsc->provider = crm_element_value_copy(dev, F_LRMD_PROVIDER);
+	rsc->type = crm_element_value_copy(dev, F_LRMD_TYPE);
+	rsc->work = mainloop_add_trigger(G_PRIORITY_HIGH, lrmd_rsc_dispatch, rsc);
+	return rsc;
+}
 
 static void
 send_reply(lrmd_client_t *client, int rc, int call_id)
@@ -79,12 +96,11 @@ send_notify(lrmd_client_t *client, int rc, xmlNode *request)
 {
 	int call_id = 0;
 	xmlNode *notify = NULL;
-	xmlNode *rsc = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
-	const char *rsc_id = crm_element_value(rsc, F_LRMD_RSC_ID);
+	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
+	const char *rsc_id = crm_element_value(rsc_xml, F_LRMD_RSC_ID);
 	const char *op = crm_element_value(request, F_LRMD_OPERATION);
 
 	crm_element_value_int(request, F_LRMD_CALLID, &call_id);
-
 	notify = create_xml_node(NULL, T_LRMD_NOTIFY);
 	crm_xml_add(notify, F_LRMD_ORIGIN, __FUNCTION__);
 	crm_xml_add_int(notify, F_LRMD_RC, rc);
@@ -122,21 +138,6 @@ free_rsc(gpointer data)
 	mainloop_destroy_trigger(rsc->work);
 
 	crm_free(rsc);
-}
-
-static lrmd_rsc_t *
-build_rsc_from_xml(xmlNode *msg)
-{
-	xmlNode *dev = get_xpath_object("//"F_LRMD_RSC, msg, LOG_ERR);
-	lrmd_rsc_t *rsc = NULL;
-
-	crm_malloc0(rsc, sizeof(lrmd_rsc_t));
-	rsc->rsc_id = crm_element_value_copy(dev, F_LRMD_RSC_ID);
-	rsc->class = crm_element_value_copy(dev, F_LRMD_CLASS);
-	rsc->provider = crm_element_value_copy(dev, F_LRMD_PROVIDER);
-	rsc->type = crm_element_value_copy(dev, F_LRMD_TYPE);
-	rsc->work = mainloop_add_trigger(G_PRIORITY_HIGH, lrmd_rsc_dispatch, rsc);
-	return rsc;
 }
 
 static int
@@ -193,28 +194,35 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 	int call_options = 0;
 	int call_id = 0;
 	const char *op = crm_element_value(request, F_LRMD_OPERATION);
-	int do_reply = 1;
+	int do_reply = 0;
+	int do_notify = 0;
 
 	crm_element_value_int(request, F_LRMD_CALLOPTS, &call_options);
 	crm_element_value_int(request, F_LRMD_CALLID, &call_id);
 
 	if (crm_str_eq(op, CRM_OP_REGISTER, TRUE)) {
 		rc = process_lrmd_signon(client, request);
-		do_reply = 0;
 	} else if (crm_str_eq(op, LRMD_OP_RSC_REG, TRUE)) {
 		rc = process_lrmd_rsc_register(client, request);
-		send_notify(client, rc, request);
+		do_notify = 1;
+		do_reply = 1;
 	} else if (crm_str_eq(op, LRMD_OP_RSC_UNREG, TRUE)) {
 		rc = process_lrmd_rsc_unregister(client, request);
-		send_notify(client, rc, request);
+		do_notify = 1;
+		do_reply = 1;
 	} else {
 		rc = lrmd_err_unknown_operation;
+		do_reply = 1;
 		crm_err("Unknown %s from %s", op, client->name);
 		crm_log_xml_warn(request, "UnknownOp");
 	}
 
 	if (do_reply) {
 		send_reply(client, rc, call_id);
+	}
+
+	if (do_notify) {
+		send_notify(client, rc, request);
 	}
 }
 

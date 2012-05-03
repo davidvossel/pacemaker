@@ -68,11 +68,15 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 	msg = string2xml(buffer);
 	type = crm_element_value(msg, F_LRMD_OPERATION);
 	crm_element_value_int(msg, F_LRMD_RC, &event.rc);
+	crm_element_value_int(msg, F_LRMD_CALLID, &event.call_id);
+	event.rsc_id = crm_element_value(msg, F_LRMD_RSC_ID);
 
 	if (crm_str_eq(type, LRMD_OP_RSC_REG, TRUE)) {
 		event.type = lrmd_event_register;
 	} else if (crm_str_eq(type, LRMD_OP_RSC_UNREG, TRUE)) {
 		event.type = lrmd_event_unregister;
+	} else if (crm_str_eq(type, LRMD_OP_RSC_CALL, TRUE)) {
+		event.type = lrmd_event_call_complete;
 	}
 
 	native->callback(&event, native->callback_userdata);
