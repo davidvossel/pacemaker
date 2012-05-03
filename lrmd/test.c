@@ -45,6 +45,16 @@ int main(int argc, char ** argv)
 		return -1;
 	}
 
+	rc = lrmd_conn->cmds->register_rsc(lrmd_conn, "test_rsc", "ocf", "pacemaker", "Dummy", 0);
+	if (!rc) {
+		printf("registered resource\n");
+	} else {
+		printf("failed to register resource\n");
+		return -1;
+	}
+
+
+
 	lrmd_api_delete(lrmd_conn);
 	return 0;
 }

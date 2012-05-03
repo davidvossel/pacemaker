@@ -191,6 +191,8 @@ main(int argc, char ** argv)
 	/* end test code */
 #endif
 
+
+    rsc_list = g_hash_table_new_full(crm_str_hash, g_str_equal, NULL, free_rsc);
 	client_list = g_hash_table_new(crm_str_hash, g_str_equal);
 	ipcs = mainloop_add_ipc_server(CRM_SYSTEM_LRMD, QB_IPC_SHM, &lrmd_ipc_callbacks);
 
@@ -207,6 +209,7 @@ main(int argc, char ** argv)
 
 	mainloop_del_ipc_server(ipcs);
 	g_hash_table_destroy(client_list);
+	g_hash_table_destroy(rsc_list);
 
 	return rc;
 }

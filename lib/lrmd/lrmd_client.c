@@ -243,18 +243,10 @@ lrmd_send_command(lrmd_t * lrmd,
 		goto done;
 	}
 
-	if (!(options & lrmd_opt_sync_call)) {
-		crm_trace("Async call, returning");
-		CRM_CHECK(native->call_id != 0, return lrmd_err_internal);
-		free_xml(op_reply);
-
-		return native->call_id;
-	}
-
 	rc = lrmd_ok;
 	crm_element_value_int(op_reply, F_LRMD_CALLID, &reply_id);
 	if (reply_id == native->call_id) {
-		crm_trace("Syncronous reply received");
+		crm_trace("reply received");
 		if (crm_element_value_int(op_reply, F_LRMD_RC, &rc) != 0) {
 			rc = lrmd_err_peer;
 			goto done;

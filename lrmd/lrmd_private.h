@@ -24,6 +24,18 @@
 #include <crm/common/ipc.h>
 #include <crm/lrmd.h>
 
+extern GHashTable *rsc_list;
+
+typedef struct lrmd_rsc_s {
+	char *rsc_id;
+	char *class;
+	char *provider;
+	char *type;
+
+//	GList *pending_ops;
+	crm_trigger_t *work;
+} lrmd_rsc_t;
+
 typedef struct lrmd_client_s {
 	char *id;
 	char *name;
@@ -34,6 +46,8 @@ typedef struct lrmd_client_s {
 
 } lrmd_client_t;
 
-gboolean process_lrmd_message(lrmd_client_t *client, xmlNode *request);
+void process_lrmd_message(lrmd_client_t *client, xmlNode *request);
+
+void free_rsc(gpointer data);
 
 #endif

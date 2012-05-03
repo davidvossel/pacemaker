@@ -45,40 +45,32 @@ typedef struct lrmd_s lrmd_t;
 #define F_LRMD_RSC	"lrmd_rsc"
 
 #define T_LRMD		"lrmd"
+#define T_LRMD_REPLY	"lrmd-reply"
 
 //#define _TEST // TODO remove all references to this define.
 
 enum lrmd_call_options {
 	lrmd_opt_none		= 0x00000000,
-	lrmd_opt_sync_call	= 0x00000001,
+	// lrmd_opt_sync_call	= 0x00000001, 
 };
 
 enum lrmd_errors {
-	lrmd_ok				=  0,
-	lrmd_pending			= -1,
+	lrmd_ok						=  0,
+	lrmd_pending				= -1,
 	lrmd_err_generic			= -2,
 	lrmd_err_internal			= -3,
 	lrmd_err_not_supported		= -4,
 	lrmd_err_connection			= -5,
 	lrmd_err_missing			= -6,
-	lrmd_err_exists			= -7,
+	lrmd_err_exists				= -7,
 	lrmd_err_timeout			= -8,
 	lrmd_err_ipc				= -9,
 	lrmd_err_peer				= -10,
-
-/*
-	lrmd_err_unknown_operation		= -11,
+	lrmd_err_unknown_operation	= -11,
 	lrmd_err_unknown_rsc		= -12,
-	lrmd_err_unknown_port			= -13,
-	lrmd_err_none_available		= -14,
-	lrmd_err_authentication		= -15,
-	lrmd_err_signal			= -16,
-	lrmd_err_agent_fork			= -17,
-	lrmd_err_agent_args			= -18,
-	lrmd_err_agent			= -19,
-	lrmd_err_invalid_target		= -20,
-	lrmd_err_invalid_level		= -21,
-*/
+	lrmd_err_none_available		= -13,
+	lrmd_err_authentication		= -14,
+	lrmd_err_signal				= -15,
 };
 
 extern lrmd_t *lrmd_api_new(void);
@@ -90,7 +82,6 @@ typedef struct lrmd_api_operations_s
 
 	int (*disconnect)(lrmd_t *lrmd);
 
-	/* TODO IMPLEMENT */
 	int (*register_rsc) (lrmd_t *lrmd,
 		const char *rsc_id,
 		const char *class,
