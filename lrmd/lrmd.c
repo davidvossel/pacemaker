@@ -110,7 +110,7 @@ send_notify(lrmd_client_t *client, int rc, xmlNode *request)
 
 	g_hash_table_foreach(client_list, send_client_notify, notify);
 
-	crm_free(notify);
+	free_xml(notify);
 }
 
 static gboolean

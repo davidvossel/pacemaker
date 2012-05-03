@@ -80,7 +80,7 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 	}
 
 	native->callback(&event, native->callback_userdata);
-	crm_free(msg);
+	free_xml(msg);
 	return 1;
 }
 
@@ -361,6 +361,22 @@ lrmd_api_set_callback(lrmd_t *lrmd, void *userdata, lrmd_event_callback callback
 	return lrmd_ok;
 }
 
+static int
+lrmd_api_get_metadata (lrmd_t *lrmd,
+	const char *class,
+	const char *provider,
+	const char *type,
+	char **output,
+	enum lrmd_call_options options)
+{
+	int rc = lrmd_ok;
+
+
+	/* TODO implement */
+
+	return rc;
+}
+
 lrmd_t *
 lrmd_api_new(void)
 {
@@ -378,6 +394,7 @@ lrmd_api_new(void)
 	new_lrmd->cmds->register_rsc = lrmd_api_register_rsc;
 	new_lrmd->cmds->unregister_rsc = lrmd_api_unregister_rsc;
 	new_lrmd->cmds->set_callback = lrmd_api_set_callback;
+	new_lrmd->cmds->get_metadata = lrmd_api_get_metadata;
 
 	return new_lrmd;
 }

@@ -38,10 +38,12 @@ typedef struct lrmd_s lrmd_t;
 #define F_LRMD_TYPE		"lrmd_type"
 #define F_LRMD_ORIGIN		"lrmd_origin"
 #define F_LRMD_RSC_ID	"lrmd_rsc_id"
+#define F_LRMD_RSC_METADATA	"lrmd_rsc_metadata_res"
 
 #define LRMD_OP_RSC_REG	"lrmd_rsc_register"
 #define LRMD_OP_RSC_UNREG	"lrmd_rsc_unregister"
 #define LRMD_OP_RSC_CALL	"lrmd_rsc_call"
+#define LRMD_OP_RSC_GET_METADATA	"lrmd_rsc_metadata"
 
 #define F_LRMD_RSC	"lrmd_rsc"
 
@@ -119,6 +121,7 @@ typedef struct lrmd_api_operations_s
 		const char *class,
 		const char *provider,
 		const char *type,
+		char **output,
 		enum lrmd_call_options options);
 
 	/* TODO IMPLEMENT - come up with a list structure for this that isn't glib*/
