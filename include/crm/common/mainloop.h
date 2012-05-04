@@ -75,4 +75,27 @@ mainloop_io_t *mainloop_add_fd(
 
 void mainloop_del_fd(mainloop_io_t *client);
 
+typedef struct mainloop_child_s mainloop_child_t;
+struct mainloop_child_s {
+    pid_t     pid;
+    char     *desc;
+    unsigned  timerid;
+    gboolean  timeout;
+    void     *privatedata;
+
+    /* Called when a process dies */
+    void (*callback)(mainloop_child_t* p, int status, int signo, int exitcode);
+};
+
+void
+mainloop_track_children(int priority);
+
+/*
+ * Create a new tracked process
+ * To track a process group, use -pid
+ */
+void
+mainloop_add_child(pid_t pid, int timeout, const char *desc, void *privatedata,
+                   void (*callback)(mainloop_child_t* p, int status, int signo,
+                                    int exitcode));
 #endif
