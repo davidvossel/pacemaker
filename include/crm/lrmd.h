@@ -141,7 +141,6 @@ typedef struct lrmd_api_operations_s
 	 * \retval call_id to track async event result on success
 	 * \retval negative error code or failure
 	 */
-	/* TODO IMPLEMENT */
 	int (*exec)(lrmd_t *lrmd,
 		const char *id,
 		const char *rsc_id,
