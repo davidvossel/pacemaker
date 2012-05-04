@@ -1568,13 +1568,13 @@ stonith_send_command(stonith_t * stonith, const char *op, xmlNode * data, xmlNod
     }
 
     crm_xml_add_int(op_msg, F_STONITH_TIMEOUT, timeout);
-    crm_trace("Sending %s message to STONITH service, Timeout: %d", op, timeout);
+    crm_trace("Sending %s message to STONITH service, Timeout: %ds", op, timeout);
 
-    rc = crm_ipc_send(native->ipc, op_msg, &op_reply, timeout);
+    rc = crm_ipc_send(native->ipc, op_msg, &op_reply, 1000*timeout);
     free_xml(op_msg);
 
     if(rc < 0) {
-        crm_perror(LOG_ERR, "Couldn't perform %s operation (timeout=%d): %d", op, timeout, rc);
+        crm_perror(LOG_ERR, "Couldn't perform %s operation (timeout=%ds): %d", op, timeout, rc);
         rc = st_err_ipc;
         goto done;
     }
