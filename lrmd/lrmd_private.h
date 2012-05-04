@@ -33,7 +33,9 @@ typedef struct lrmd_rsc_s {
 	char *provider;
 	char *type;
 
-//	GList *pending_ops;
+	int active;
+
+	GList *pending_ops;
 	crm_trigger_t *work;
 } lrmd_rsc_t;
 

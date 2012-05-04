@@ -51,11 +51,19 @@ unregister_res(lrmd_event_data_t *event, void *userdata)
 }
 
 static void
-register_res(lrmd_event_data_t *event, void *userdata)
+start_res(lrmd_event_data_t *event, void *userdata)
 {
 	report_event(event);
 	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, unregister_res);
 	lrmd_conn->cmds->unregister_rsc(lrmd_conn, "test_rsc", 0);
+}
+
+static void
+register_res(lrmd_event_data_t *event, void *userdata)
+{
+	report_event(event);
+	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, start_res);
+	lrmd_conn->cmds->exec(lrmd_conn, "start_stuff", "test_rsc", "start", 0, 0, 0, 0, NULL);
 }
 
 static gboolean

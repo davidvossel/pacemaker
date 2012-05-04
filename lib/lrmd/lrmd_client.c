@@ -35,8 +35,15 @@
 #include <crm/crm.h>
 #include <crm/lrmd.h>
 #include <crm/common/mainloop.h>
+#include <crm/msg_xml.h>
 
 CRM_TRACE_INIT_DATA(lrmd);
+
+typedef struct lrmd_key_value_s {
+	char *key;
+	char *value;
+	struct lrmd_key_value_s *next;
+} lrmd_key_value_t;
 
 typedef struct lrmd_private_s {
 	int call_id;
@@ -50,6 +57,42 @@ typedef struct lrmd_private_s {
 
 } lrmd_private_t;
 
+lrmd_key_value_t *
+lrmd_key_value_add(lrmd_key_value_t * head, const char *key, const char *value)
+{
+	lrmd_key_value_t *p, *end;
+
+	crm_malloc0(p, sizeof(lrmd_key_value_t));
+	p->key = crm_strdup(key);
+	p->value = crm_strdup(value);
+
+	end = head;
+	while (end && end->next) {
+		end = end->next;
+	}
+
+	if (end) {
+		end->next = p;
+	} else {
+		head = p;
+	}
+
+	return head;
+}
+
+static void
+lrmd_key_value_freeall(lrmd_key_value_t * head)
+{
+	lrmd_key_value_t *p;
+	while (head) {
+		p = head->next;
+		crm_free(head->key);
+		crm_free(head->value);
+		crm_free(head);
+		head = p;
+	}
+}
+
 static int
 lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 {
@@ -57,9 +100,8 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 	lrmd_t *lrmd = userdata;
 	lrmd_private_t *native = lrmd->private;
 	lrmd_event_data_t event = { 0, };
-    xmlNode *msg;
+	xmlNode *msg;
 
-	crm_info("Got event from lrmd!");
 	if (!native->callback) {
 		/* no callback set */
 		return 1;
@@ -76,6 +118,8 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 	} else if (crm_str_eq(type, LRMD_OP_RSC_UNREG, TRUE)) {
 		event.type = lrmd_event_unregister;
 	} else if (crm_str_eq(type, LRMD_OP_RSC_CALL, TRUE)) {
+		crm_element_value_int(msg, F_LRMD_EXEC_RC, &event.exec_rc);
+		event.exec_id = crm_element_value(msg, F_LRMD_RSC_CMD_ID);
 		event.type = lrmd_event_call_complete;
 	}
 
@@ -122,11 +166,11 @@ lrmd_send_command(lrmd_t * lrmd,
 	const char *op,
 	xmlNode *data,
 	xmlNode **output_data,
-	int timeout,
+	int timeout, /* ms. defaults to 1000 if set to 0 */
 	enum lrmd_call_options options)
 {
 	int rc = lrmd_ok;
-    int reply_id = -1;
+	int reply_id = -1;
 	lrmd_private_t *native = lrmd->private;
 	xmlNode *op_msg = NULL;
 	xmlNode *op_reply = NULL;
@@ -159,6 +203,7 @@ lrmd_send_command(lrmd_t * lrmd,
 
 	crm_xml_add_int(op_msg, F_LRMD_TIMEOUT, timeout);
 
+	timeout = !timeout ? 1000 : timeout;
 	rc = crm_ipc_send(native->ipc, op_msg, &op_reply, timeout);
 	free_xml(op_msg);
 
@@ -355,10 +400,42 @@ lrmd_api_get_metadata (lrmd_t *lrmd,
 	enum lrmd_call_options options)
 {
 	int rc = lrmd_ok;
-
-
 	/* TODO implement */
 
+	return rc;
+}
+
+static int
+lrmd_api_exec(lrmd_t *lrmd,
+	const char *id,
+	const char *rsc_id,
+	const char *action,
+	int interval, /* ms */
+	int timeout, /* ms */
+	int start_delay, /* ms */
+	enum lrmd_call_options options,
+	lrmd_key_value_t *params)
+{
+	int rc = lrmd_ok;
+	xmlNode *data = create_xml_node(NULL, F_LRMD_RSC);
+	xmlNode *args = create_xml_node(data, XML_TAG_ATTRS);
+
+	crm_xml_add(data, F_LRMD_ORIGIN, __FUNCTION__);
+	crm_xml_add(data, F_LRMD_RSC_CMD_ID, id);
+	crm_xml_add(data, F_LRMD_RSC_ID, rsc_id);
+	crm_xml_add(data, F_LRMD_RSC_ACTION, action);
+	crm_xml_add_int(data, F_LRMD_RSC_INTERVAL, interval);
+	crm_xml_add_int(data, F_LRMD_RSC_TIMEOUT, timeout);
+	crm_xml_add_int(data, F_LRMD_RSC_START_DELAY, start_delay);
+
+	for (; params; params = params->next) {
+		hash2field((gpointer) params->key, (gpointer) params->value, args);
+	}
+
+	rc = lrmd_send_command(lrmd, LRMD_OP_RSC_EXEC, data, NULL, timeout, options);
+	free_xml(data);
+
+	lrmd_key_value_freeall(params);
 	return rc;
 }
 
@@ -380,6 +457,7 @@ lrmd_api_new(void)
 	new_lrmd->cmds->unregister_rsc = lrmd_api_unregister_rsc;
 	new_lrmd->cmds->set_callback = lrmd_api_set_callback;
 	new_lrmd->cmds->get_metadata = lrmd_api_get_metadata;
+	new_lrmd->cmds->exec = lrmd_api_exec;
 
 	return new_lrmd;
 }

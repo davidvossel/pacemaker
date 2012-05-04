@@ -33,20 +33,80 @@ GHashTable *rsc_list = NULL;
 GHashTable *client_list = NULL;
 static gboolean lrmd_rsc_dispatch(gpointer user_data);
 
+typedef struct lrmd_cmd_s {
+	int timeout;
+	int interval;
+	int start_delay; /* TODO implement this */
+	int call_id;
+	int rc;
+	int exec_rc;
+
+	char *origin;
+	char *rsc_id;
+	char *cmd_id;
+	char *action;
+
+	GHashTable *params;
+} lrmd_cmd_t;
 
 static lrmd_rsc_t *
 build_rsc_from_xml(xmlNode *msg)
 {
-	xmlNode *dev = get_xpath_object("//"F_LRMD_RSC, msg, LOG_ERR);
+	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, msg, LOG_ERR);
 	lrmd_rsc_t *rsc = NULL;
 
 	crm_malloc0(rsc, sizeof(lrmd_rsc_t));
-	rsc->rsc_id = crm_element_value_copy(dev, F_LRMD_RSC_ID);
-	rsc->class = crm_element_value_copy(dev, F_LRMD_CLASS);
-	rsc->provider = crm_element_value_copy(dev, F_LRMD_PROVIDER);
-	rsc->type = crm_element_value_copy(dev, F_LRMD_TYPE);
+	rsc->rsc_id = crm_element_value_copy(rsc_xml, F_LRMD_RSC_ID);
+	rsc->class = crm_element_value_copy(rsc_xml, F_LRMD_CLASS);
+	rsc->provider = crm_element_value_copy(rsc_xml, F_LRMD_PROVIDER);
+	rsc->type = crm_element_value_copy(rsc_xml, F_LRMD_TYPE);
 	rsc->work = mainloop_add_trigger(G_PRIORITY_HIGH, lrmd_rsc_dispatch, rsc);
 	return rsc;
+}
+
+static lrmd_cmd_t *
+create_lrmd_cmd(xmlNode *msg)
+{
+	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, msg, LOG_ERR);
+	lrmd_cmd_t *cmd = NULL;
+
+	crm_malloc0(cmd, sizeof(lrmd_cmd_t));
+
+	crm_element_value_int(rsc_xml, F_LRMD_RSC_INTERVAL, &cmd->interval);
+	crm_element_value_int(rsc_xml, F_LRMD_RSC_TIMEOUT, &cmd->timeout);
+	crm_element_value_int(rsc_xml, F_LRMD_RSC_START_DELAY, &cmd->start_delay);
+	crm_element_value_int(rsc_xml, F_LRMD_CALLID, &cmd->call_id);
+
+	cmd->origin = crm_element_value_copy(rsc_xml, F_LRMD_ORIGIN);
+	cmd->action = crm_element_value_copy(rsc_xml, F_LRMD_RSC_ACTION);
+	cmd->rsc_id = crm_element_value_copy(rsc_xml, F_LRMD_RSC_ID);
+	cmd->cmd_id = crm_element_value_copy(rsc_xml, F_LRMD_RSC_CMD_ID);
+
+	cmd->params = xml2list(rsc_xml);
+
+	return cmd;
+}
+
+static void
+free_lrmd_cmd(lrmd_cmd_t *cmd)
+{
+	g_hash_table_destroy(cmd->params);
+	crm_free(cmd->origin);
+	crm_free(cmd->action);
+	crm_free(cmd->rsc_id);
+	crm_free(cmd->cmd_id);
+	crm_free(cmd);
+}
+
+static void
+schedule_lrmd_cmd(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
+{
+	CRM_CHECK(cmd != NULL, return);
+	CRM_CHECK(rsc != NULL, return);
+
+	crm_trace("Scheduling %s on %s", cmd->action, rsc->rsc_id);
+	rsc->pending_ops = g_list_append(rsc->pending_ops, cmd);
+	mainloop_set_trigger(rsc->work);
 }
 
 static void
@@ -92,7 +152,26 @@ send_client_notify(gpointer key, gpointer value, gpointer user_data)
 }
 
 static void
-send_notify(lrmd_client_t *client, int rc, xmlNode *request)
+send_cmd_complete_notify(lrmd_cmd_t *cmd)
+{
+	xmlNode *notify = NULL;
+	notify = create_xml_node(NULL, T_LRMD_NOTIFY);
+
+	crm_xml_add(notify, F_LRMD_ORIGIN, __FUNCTION__);
+	crm_xml_add_int(notify, F_LRMD_RC, cmd->rc);
+	crm_xml_add_int(notify, F_LRMD_EXEC_RC, cmd->exec_rc);
+	crm_xml_add_int(notify, F_LRMD_CALLID, cmd->call_id);
+	crm_xml_add(notify, F_LRMD_OPERATION, LRMD_OP_RSC_EXEC);
+	crm_xml_add(notify, F_LRMD_RSC_ID, cmd->rsc_id);
+	crm_xml_add(notify, F_LRMD_RSC_CMD_ID, cmd->cmd_id);
+
+	g_hash_table_foreach(client_list, send_client_notify, notify);
+
+	free_xml(notify);
+}
+
+static void
+send_generic_notify(int rc, xmlNode *request)
 {
 	int call_id = 0;
 	xmlNode *notify = NULL;
@@ -113,10 +192,85 @@ send_notify(lrmd_client_t *client, int rc, xmlNode *request)
 	free_xml(notify);
 }
 
+static void
+cmd_finalize(lrmd_cmd_t *cmd)
+{
+	lrmd_rsc_t *rsc;
+
+	crm_trace("Resource operation %s completed", cmd->cmd_id);
+	if (cmd->rsc_id && (rsc = g_hash_table_lookup(rsc_list, cmd->rsc_id))) {
+		rsc->active = 0;
+		mainloop_set_trigger(rsc->work);
+	}
+	send_cmd_complete_notify(cmd);
+	free_lrmd_cmd(cmd);
+}
+
+static void
+action_complete(svc_action_t *action)
+{
+	lrmd_cmd_t *cmd = action->cb_data;
+
+	cmd->exec_rc = action->rc;
+	cmd_finalize(cmd);
+}
+
 static gboolean
 lrmd_rsc_execute(lrmd_rsc_t *rsc)
 {
-	/* TODO implement */
+	lrmd_cmd_t *cmd = NULL;
+	svc_action_t *action = NULL;
+	CRM_CHECK(rsc != NULL, return FALSE);
+
+	if (rsc->active) {
+		crm_trace("%s is still active with pid %u", rsc->rsc_id, rsc->active);
+		return TRUE;
+	}
+
+	if (rsc->pending_ops) {
+		GList *first = rsc->pending_ops;
+		rsc->pending_ops = g_list_remove_link(rsc->pending_ops, first);
+		cmd = first->data;
+		g_list_free_1(first);
+	}
+
+	if (!cmd) {
+		crm_trace("Nothing further to do for %s", rsc->rsc_id);
+		return TRUE;
+	}
+
+	crm_trace("Creating action, id:%s action:%s", cmd->cmd_id, cmd->action);
+	action = resources_action_create(cmd->cmd_id,
+		rsc->class,
+		rsc->provider,
+		rsc->type,
+		cmd->action,
+		cmd->interval,
+		cmd->timeout,
+		cmd->params);
+
+	cmd->params = NULL; /* We no longer own the params */
+	if (!action) {
+		crm_err("Failed to create action, id:%s action:%s on resource %s", cmd->cmd_id, cmd->action, rsc->rsc_id);
+		cmd->rc = lrmd_err_exec_failed;
+		goto exec_done;
+	}
+
+	action->cb_data = cmd;
+	if (!services_action_async(action, action_complete)) {
+		services_action_free(action);
+		action = NULL;
+		cmd->rc = lrmd_err_exec_failed;
+		goto exec_done;
+	}
+
+	cmd = NULL; /* handed it off to the service api */
+	rsc->active = 1;
+
+exec_done:
+	if (cmd) {
+		cmd_finalize(cmd);
+	}
 	return TRUE;
 }
 
@@ -169,8 +323,8 @@ static int
 process_lrmd_rsc_unregister(lrmd_client_t *client, xmlNode *request)
 {
 	int rc = lrmd_ok;
-	xmlNode *rsc = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
-	const char *rsc_id = crm_element_value(rsc, F_LRMD_RSC_ID);
+	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
+	const char *rsc_id = crm_element_value(rsc_xml, F_LRMD_RSC_ID);
 
 	if (!rsc_id) {
 		return lrmd_err_unknown_rsc;
@@ -185,6 +339,28 @@ process_lrmd_rsc_unregister(lrmd_client_t *client, xmlNode *request)
 	}
 
 	return rc;
+}
+
+static int
+process_lrmd_rsc_exec(lrmd_client_t *client, xmlNode *request)
+{
+	int call_id = 0;
+	lrmd_rsc_t *rsc = NULL;
+	lrmd_cmd_t *cmd = NULL;
+	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
+	const char *rsc_id = crm_element_value(rsc_xml, F_LRMD_RSC_ID);
+
+	if (!rsc_id) {
+		return lrmd_err_missing;
+	}
+	if (!(rsc = g_hash_table_lookup(rsc_list, rsc_id))) {
+		return lrmd_err_unknown_rsc;
+	}
+
+	cmd = create_lrmd_cmd(request);
+	schedule_lrmd_cmd(rsc, cmd);
+
+	return call_id;
 }
 
 void
@@ -210,6 +386,9 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 		rc = process_lrmd_rsc_unregister(client, request);
 		do_notify = 1;
 		do_reply = 1;
+	} else if (crm_str_eq(op, LRMD_OP_RSC_EXEC, TRUE)) {
+		rc = process_lrmd_rsc_exec(client, request);
+		do_reply = 1;
 	} else {
 		rc = lrmd_err_unknown_operation;
 		do_reply = 1;
@@ -222,7 +401,7 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 	}
 
 	if (do_notify) {
-		send_notify(client, rc, request);
+		send_generic_notify(rc, request);
 	}
 }
 
