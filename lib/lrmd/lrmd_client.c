@@ -205,19 +205,6 @@ done:
 	return rc;
 }
 
-#ifdef _TEST // TODO all the code in the _TEST defines will go away.
-/*
-static void dump_xml(const char *description, xmlNode *msg)
-{
-	char *dump;
-
-	dump = msg ? dump_xml_formatted(msg) : NULL;
-	crm_info("%s = %s", description, dump);
-	crm_free(dump);
-}
-*/
-#endif
-
 static int
 lrmd_api_connect(lrmd_t * lrmd, const char *name, int *lrmd_fd)
 {

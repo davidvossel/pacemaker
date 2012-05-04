@@ -51,8 +51,6 @@ typedef struct lrmd_s lrmd_t;
 #define T_LRMD_REPLY	"lrmd_reply"
 #define T_LRMD_NOTIFY	"lrmd_notify"
 
-//#define _TEST // TODO remove all references to this define.
-
 extern lrmd_t *lrmd_api_new(void);
 extern void lrmd_api_delete(lrmd_t * lrmd);
 
@@ -123,9 +121,6 @@ typedef struct lrmd_api_operations_s
 		const char *type,
 		char **output,
 		enum lrmd_call_options options);
-
-	/* TODO IMPLEMENT - come up with a list structure for this that isn't glib*/
-	void * (*list_rscs)(lrmd_t *lrmd);
 
 	/*!
 	 * \brief Issue a command on a resource
