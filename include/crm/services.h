@@ -33,8 +33,13 @@ extern "C" {
 #include <stdio.h>
 
 /* TODO: Autodetect these two ?*/
-#define PCMK_OCF_ROOT "/usr/lib/ocf"
-#define PCMK_LSB_ROOT "/etc/init.d"
+#ifndef OCF_ROOT
+#define OCF_ROOT "/usr/lib/ocf"
+#endif
+
+#ifndef LSB_ROOT
+#define LSB_ROOT "/etc/init.d"
+#endif
 
 #define SYSTEMCTL "/bin/systemctl"
 

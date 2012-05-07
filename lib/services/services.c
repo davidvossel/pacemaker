@@ -106,7 +106,7 @@ svc_action_t *resources_action_create(
         op->params = params;
 
         if (asprintf(&op->opaque->exec, "%s/resource.d/%s/%s",
-                     PCMK_OCF_ROOT, provider, agent) == -1) {
+                     OCF_ROOT, provider, agent) == -1) {
             goto return_error;
         }
         op->opaque->args[0] = strdup(op->opaque->exec);

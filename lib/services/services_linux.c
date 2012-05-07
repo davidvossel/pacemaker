@@ -178,7 +178,7 @@ add_OCF_env_vars(svc_action_t *op)
 
     set_ocf_env("OCF_RA_VERSION_MAJOR", "1", NULL);
     set_ocf_env("OCF_RA_VERSION_MINOR", "0", NULL);
-    set_ocf_env("PCMK_OCF_ROOT", PCMK_OCF_ROOT, NULL);
+    set_ocf_env("OCF_ROOT", OCF_ROOT, NULL);
 
     if (op->rsc) {
         set_ocf_env("OCF_RESOURCE_INSTANCE", op->rsc, NULL);
@@ -502,7 +502,7 @@ services_os_set_exec(svc_action_t *op)
         op->opaque->args[3] = NULL;
 
     } else {
-        if (asprintf(&op->opaque->exec, "%s/%s", PCMK_LSB_ROOT, op->agent) == -1) {
+        if (asprintf(&op->opaque->exec, "%s/%s", LSB_ROOT, op->agent) == -1) {
             return;
         }
         op->opaque->args[0] = strdup(op->opaque->exec);
@@ -514,14 +514,14 @@ services_os_set_exec(svc_action_t *op)
 GList *
 services_os_list(void)
 {
-    return get_directory_list(PCMK_LSB_ROOT, TRUE);
+    return get_directory_list(LSB_ROOT, TRUE);
 }
 
 
 GList *
 resources_os_list_ocf_providers(void)
 {
-    return get_directory_list(PCMK_OCF_ROOT "/resource.d", FALSE);
+    return get_directory_list(OCF_ROOT "/resource.d", FALSE);
 }
 
 GList *
@@ -529,7 +529,7 @@ resources_os_list_ocf_agents(const char *provider)
 {
     if (provider) {
         char buffer[500];
-        snprintf(buffer, sizeof(buffer), "%s//resource.d/%s", PCMK_OCF_ROOT,
+        snprintf(buffer, sizeof(buffer), "%s//resource.d/%s", OCF_ROOT,
                  provider);
         return get_directory_list(buffer, TRUE);
     }
