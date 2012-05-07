@@ -339,6 +339,7 @@ lrmd_api_disconnect(lrmd_t * lrmd)
 		native->ipc = NULL;
 	}
 
+	crm_free(native->token);
 	return 0;
 }
 
@@ -465,10 +466,8 @@ lrmd_api_new(void)
 void
 lrmd_api_delete(lrmd_t * lrmd)
 {
-	lrmd_private_t *private = lrmd->private;
-
 	lrmd->cmds->disconnect(lrmd); /* no-op if already disconnected */
-	crm_free(private->token);
+	crm_free(lrmd->cmds);
 	crm_free(lrmd->private);
 	crm_free(lrmd);
 }
