@@ -207,6 +207,26 @@ services_action_free(svc_action_t *op)
 }
 
 gboolean
+cancel_recurring_action(svc_action_t *op)
+{
+    if (op->pid) {
+        return FALSE;
+    }
+
+    crm_info("Cancelling operation %s", op->id);
+
+    if (recurring_actions) {
+        g_hash_table_remove(recurring_actions, op->id);
+    }
+
+    if (op->opaque->repeat_timer) {
+        g_source_remove(op->opaque->repeat_timer);
+    }
+
+    return TRUE;
+}
+
+gboolean
 services_action_cancel(const char *name, const char *action, int interval)
 {
     svc_action_t* op = NULL;
@@ -218,11 +238,16 @@ services_action_cancel(const char *name, const char *action, int interval)
         return FALSE;
     }
 
-    crm_debug("Removing %s", op->id);
-    if (op->opaque->repeat_timer) {
-        g_source_remove(op->opaque->repeat_timer);
+    if (cancel_recurring_action(op)) {
+        op->status = PCMK_LRM_OP_CANCELLED;
+        if (op->opaque->callback) {
+            op->opaque->callback(op);
+        }
+        services_action_free(op);
+    } else {
+        crm_info("Cancelling op: %s will occur once operation completes", id);
+        op->cancel = 1;
     }
-    services_action_free(op);
 
     return TRUE;
 }

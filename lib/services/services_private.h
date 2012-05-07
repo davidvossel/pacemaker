@@ -54,4 +54,7 @@ resources_os_list_ocf_agents(const char *provider);
 GList *
 resources_os_list_systemd_services(void);
 
+gboolean
+cancel_recurring_action(svc_action_t *op);
+
 #endif /* __MH_SERVICES_PRIVATE_H__ */

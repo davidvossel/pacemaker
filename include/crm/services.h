@@ -127,6 +127,7 @@ typedef struct svc_action_s
 
     int rc;
     int pid;
+    int cancel;
     int status;
     int sequence;
     int expected_rc;

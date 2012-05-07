@@ -53,7 +53,6 @@ struct lrmd_key_value_t;
 #define LRMD_OP_RSC_EXEC          "lrmd_rsc_exec"
 #define LRMD_OP_RSC_CANCEL        "lrmd_rsc_cancel"
 #define LRMD_OP_RSC_UNREG         "lrmd_rsc_unregister"
-#define LRMD_OP_RSC_CALL          "lrmd_rsc_call"
 #define LRMD_OP_RSC_GET_METADATA  "lrmd_rsc_metadata"
 
 
@@ -96,7 +95,7 @@ enum lrmd_errors {
 enum lrmd_callback_event {
 	lrmd_event_register,
 	lrmd_event_unregister,
-	lrmd_event_call_complete,
+	lrmd_event_exec_complete,
 };
 
 typedef struct lrmd_event_data_s {

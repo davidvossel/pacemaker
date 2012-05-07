@@ -35,8 +35,8 @@
 GMainLoop *mainloop = NULL;
 lrmd_t *lrmd_conn = NULL;
 
-static int monitor_count = 0;
 static int monitor_call_id = 0;
+static int monitor_call_id2 = 0;
 
 #define report_event(event)	\
 	if (!event->rc) {	\
@@ -60,8 +60,8 @@ unregister_res(lrmd_event_data_t *event, void *userdata)
 static void
 cancel_res(lrmd_event_data_t *event, void *userdata)
 {
+	report_event(event);
 	if (event->lrmd_op_status == PCMK_LRM_OP_CANCELLED) {
-		report_event(event);
 		lrmd_conn->cmds->set_callback(lrmd_conn, NULL, unregister_res);
 		lrmd_conn->cmds->unregister_rsc(lrmd_conn, "test_rsc", 0);
 	}
@@ -70,12 +70,12 @@ cancel_res(lrmd_event_data_t *event, void *userdata)
 static void
 monitor_res(lrmd_event_data_t *event, void *userdata)
 {
-	if (monitor_count) {
+	if (event->call_id == monitor_call_id) {
 		report_event(event);
 		lrmd_conn->cmds->cancel(lrmd_conn, "test_rsc", monitor_call_id);
+		lrmd_conn->cmds->cancel(lrmd_conn, "test_rsc", monitor_call_id2);
 		lrmd_conn->cmds->set_callback(lrmd_conn, NULL, cancel_res);
 	}
-	monitor_count++;
 }
 
 static void
@@ -91,7 +91,9 @@ register_res(lrmd_event_data_t *event, void *userdata)
 	report_event(event);
 	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, start_res);
 	lrmd_conn->cmds->exec(lrmd_conn, "start_stuff", "test_rsc", "start", 0, 0, 0, 0, NULL);
-	monitor_call_id = lrmd_conn->cmds->exec(lrmd_conn, "monitor_stuff", "test_rsc", "monitor", 10, 10, 0, 0, NULL);
+	monitor_call_id = lrmd_conn->cmds->exec(lrmd_conn, "monitor_stuff", "test_rsc", "monitor", 10, 10000, 0, 0, NULL);
+	sleep(1);
+	monitor_call_id2 = lrmd_conn->cmds->exec(lrmd_conn, "monitor_stuff2", "test_rsc", "monitor", 10, 10000, 0, 0, NULL);
 	crm_info("Monitor call id = %d", monitor_call_id);
 }
 

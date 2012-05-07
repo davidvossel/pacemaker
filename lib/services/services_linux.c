@@ -266,14 +266,19 @@ operation_finished(mainloop_child_t *p, int status, int signo, int exitcode)
         }
     }
 
-    if (op->interval) {
-        recurring = 1;
-        op->opaque->repeat_timer = g_timeout_add(op->interval,
-                                                 recurring_action_timer,
-                                                 (void *) op);
-    }
-
     op->pid = 0;
+
+    if (op->interval) {
+        if (op->cancel) {
+            op->status = PCMK_LRM_OP_CANCELLED;
+            cancel_recurring_action(op);
+        } else {
+            recurring = 1;
+            op->opaque->repeat_timer = g_timeout_add(op->interval,
+                recurring_action_timer,
+                (void *) op);
+        }
+    }
 
     if (op->opaque->callback) {
         op->opaque->callback(op);

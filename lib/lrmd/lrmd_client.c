@@ -117,11 +117,11 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 		event.type = lrmd_event_register;
 	} else if (crm_str_eq(type, LRMD_OP_RSC_UNREG, TRUE)) {
 		event.type = lrmd_event_unregister;
-	} else if (crm_str_eq(type, LRMD_OP_RSC_CALL, TRUE)) {
+	} else if (crm_str_eq(type, LRMD_OP_RSC_EXEC, TRUE)) {
 		crm_element_value_int(msg, F_LRMD_EXEC_RC, &event.exec_rc);
 		crm_element_value_int(msg, F_LRMD_OP_STATUS, &event.lrmd_op_status);
 		event.exec_id = crm_element_value(msg, F_LRMD_RSC_CMD_ID);
-		event.type = lrmd_event_call_complete;
+		event.type = lrmd_event_exec_complete;
 	}
 
 	native->callback(&event, native->callback_userdata);
