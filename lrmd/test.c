@@ -28,12 +28,19 @@
 
 #include <crm/lrmd.h>
 
+/* TODO this file will completely change, the current logic
+ * exists just to sanity check the api as it is being 
+ * developed. */
+
 GMainLoop *mainloop = NULL;
 lrmd_t *lrmd_conn = NULL;
 
+static int monitor_count = 0;
+static int monitor_call_id = 0;
+
 #define report_event(event)	\
 	if (!event->rc) {	\
-		crm_info("SUCCESS:"); \
+		crm_info("SUCCESS: op status %d", event->lrmd_op_status); \
 	} else {	\
 		crm_info("FAILURE:");	\
 	}	\
@@ -51,11 +58,31 @@ unregister_res(lrmd_event_data_t *event, void *userdata)
 }
 
 static void
+cancel_res(lrmd_event_data_t *event, void *userdata)
+{
+	if (event->lrmd_op_status == PCMK_LRM_OP_CANCELLED) {
+		report_event(event);
+		lrmd_conn->cmds->set_callback(lrmd_conn, NULL, unregister_res);
+		lrmd_conn->cmds->unregister_rsc(lrmd_conn, "test_rsc", 0);
+	}
+}
+
+static void
+monitor_res(lrmd_event_data_t *event, void *userdata)
+{
+	if (monitor_count) {
+		report_event(event);
+		lrmd_conn->cmds->cancel(lrmd_conn, "test_rsc", monitor_call_id);
+		lrmd_conn->cmds->set_callback(lrmd_conn, NULL, cancel_res);
+	}
+	monitor_count++;
+}
+
+static void
 start_res(lrmd_event_data_t *event, void *userdata)
 {
 	report_event(event);
-	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, unregister_res);
-	lrmd_conn->cmds->unregister_rsc(lrmd_conn, "test_rsc", 0);
+	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, monitor_res);
 }
 
 static void
@@ -64,6 +91,8 @@ register_res(lrmd_event_data_t *event, void *userdata)
 	report_event(event);
 	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, start_res);
 	lrmd_conn->cmds->exec(lrmd_conn, "start_stuff", "test_rsc", "start", 0, 0, 0, 0, NULL);
+	monitor_call_id = lrmd_conn->cmds->exec(lrmd_conn, "monitor_stuff", "test_rsc", "monitor", 10, 10, 0, 0, NULL);
+	crm_info("Monitor call id = %d", monitor_call_id);
 }
 
 static gboolean

@@ -40,6 +40,7 @@ typedef struct lrmd_cmd_s {
 	int call_id;
 	int rc;
 	int exec_rc;
+	int lrmd_op_status;
 
 	char *origin;
 	char *rsc_id;
@@ -72,10 +73,12 @@ create_lrmd_cmd(xmlNode *msg)
 
 	crm_malloc0(cmd, sizeof(lrmd_cmd_t));
 
+
+	crm_element_value_int(msg, F_LRMD_CALLID, &cmd->call_id);
+
 	crm_element_value_int(rsc_xml, F_LRMD_RSC_INTERVAL, &cmd->interval);
 	crm_element_value_int(rsc_xml, F_LRMD_RSC_TIMEOUT, &cmd->timeout);
 	crm_element_value_int(rsc_xml, F_LRMD_RSC_START_DELAY, &cmd->start_delay);
-	crm_element_value_int(rsc_xml, F_LRMD_CALLID, &cmd->call_id);
 
 	cmd->origin = crm_element_value_copy(rsc_xml, F_LRMD_ORIGIN);
 	cmd->action = crm_element_value_copy(rsc_xml, F_LRMD_RSC_ACTION);
@@ -90,7 +93,9 @@ create_lrmd_cmd(xmlNode *msg)
 static void
 free_lrmd_cmd(lrmd_cmd_t *cmd)
 {
-	g_hash_table_destroy(cmd->params);
+	if (cmd->params) {
+		g_hash_table_destroy(cmd->params);
+	}
 	crm_free(cmd->origin);
 	crm_free(cmd->action);
 	crm_free(cmd->rsc_id);
@@ -160,6 +165,7 @@ send_cmd_complete_notify(lrmd_cmd_t *cmd)
 	crm_xml_add(notify, F_LRMD_ORIGIN, __FUNCTION__);
 	crm_xml_add_int(notify, F_LRMD_RC, cmd->rc);
 	crm_xml_add_int(notify, F_LRMD_EXEC_RC, cmd->exec_rc);
+	crm_xml_add_int(notify, F_LRMD_OP_STATUS, cmd->lrmd_op_status);
 	crm_xml_add_int(notify, F_LRMD_CALLID, cmd->call_id);
 	crm_xml_add(notify, F_LRMD_OPERATION, LRMD_OP_RSC_EXEC);
 	crm_xml_add(notify, F_LRMD_RSC_ID, cmd->rsc_id);
@@ -180,6 +186,7 @@ send_generic_notify(int rc, xmlNode *request)
 	const char *op = crm_element_value(request, F_LRMD_OPERATION);
 
 	crm_element_value_int(request, F_LRMD_CALLID, &call_id);
+
 	notify = create_xml_node(NULL, T_LRMD_NOTIFY);
 	crm_xml_add(notify, F_LRMD_ORIGIN, __FUNCTION__);
 	crm_xml_add_int(notify, F_LRMD_RC, rc);
@@ -193,26 +200,42 @@ send_generic_notify(int rc, xmlNode *request)
 }
 
 static void
-cmd_finalize(lrmd_cmd_t *cmd)
+cmd_finalize(lrmd_cmd_t *cmd, lrmd_rsc_t *rsc)
 {
-	lrmd_rsc_t *rsc;
-
 	crm_trace("Resource operation %s completed", cmd->cmd_id);
-	if (cmd->rsc_id && (rsc = g_hash_table_lookup(rsc_list, cmd->rsc_id))) {
+	send_cmd_complete_notify(cmd);
+
+	if (rsc) {
 		rsc->active = 0;
 		mainloop_set_trigger(rsc->work);
 	}
-	send_cmd_complete_notify(cmd);
-	free_lrmd_cmd(cmd);
+
+	if (cmd->lrmd_op_status < PCMK_LRM_OP_DONE) {
+		if (rsc && cmd->interval) {
+			rsc->recurring_ops = g_list_remove(rsc->recurring_ops, cmd);
+		}
+		free_lrmd_cmd(cmd);
+	} else if (cmd->interval == 0) {
+		free_lrmd_cmd(cmd);
+	}
 }
 
 static void
 action_complete(svc_action_t *action)
 {
+	lrmd_rsc_t *rsc;
 	lrmd_cmd_t *cmd = action->cb_data;
 
+	if (!cmd) {
+		crm_err("LRMD action (%s) completed does not match any known operations.", action->id);
+		return;
+	}
+
 	cmd->exec_rc = action->rc;
-	cmd_finalize(cmd);
+	cmd->lrmd_op_status = action->status;
+	rsc = cmd->rsc_id ? g_hash_table_lookup(rsc_list, cmd->rsc_id) : NULL;
+
+	cmd_finalize(cmd, rsc);
 }
 
 static gboolean
@@ -261,15 +284,19 @@ lrmd_rsc_execute(lrmd_rsc_t *rsc)
 		services_action_free(action);
 		action = NULL;
 		cmd->rc = lrmd_err_exec_failed;
+		cmd->lrmd_op_status = PCMK_LRM_OP_ERROR;
 		goto exec_done;
 	}
 
-	cmd = NULL; /* handed it off to the service api */
+	if (cmd->interval) {
+		rsc->recurring_ops = g_list_append(rsc->recurring_ops, cmd);
+	}
+	cmd = NULL;
 	rsc->active = 1;
 
 exec_done:
 	if (cmd) {
-		cmd_finalize(cmd);
+		cmd_finalize(cmd, rsc);
 	}
 	return TRUE;
 }
@@ -283,7 +310,29 @@ lrmd_rsc_dispatch(gpointer user_data)
 void
 free_rsc(gpointer data)
 {
+	GListPtr gIter = NULL;
 	lrmd_rsc_t *rsc = data;
+
+	for (gIter = rsc->pending_ops; gIter != NULL; gIter = gIter->next) {
+		lrmd_cmd_t *cmd = gIter->data;
+		cmd->rc = lrmd_ok;
+		/* command was never executed */
+		cmd->lrmd_op_status = PCMK_LRM_OP_CANCELLED;
+		cmd_finalize(cmd, NULL);
+    }
+	/* frees list, but not list elements. */
+    g_list_free(rsc->pending_ops);
+
+	for (gIter = rsc->recurring_ops; gIter != NULL; gIter = gIter->next) {
+		lrmd_cmd_t *cmd = gIter->data;
+		/* this command is already handed off to service library,
+		 * let service library cancel it and tell us via the callback
+		 * when it is cancelled. The rsc can be safely destroyed
+		 * even if we are waiting for the cancel result */
+		services_action_cancel(cmd->cmd_id, cmd->action, cmd->interval);
+    }
+	/* frees list, but not list elements. */
+    g_list_free(rsc->recurring_ops);
 
 	crm_free(rsc->rsc_id);
 	crm_free(rsc->class);
@@ -344,7 +393,6 @@ process_lrmd_rsc_unregister(lrmd_client_t *client, xmlNode *request)
 static int
 process_lrmd_rsc_exec(lrmd_client_t *client, xmlNode *request)
 {
-	int call_id = 0;
 	lrmd_rsc_t *rsc = NULL;
 	lrmd_cmd_t *cmd = NULL;
 	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
@@ -360,7 +408,40 @@ process_lrmd_rsc_exec(lrmd_client_t *client, xmlNode *request)
 	cmd = create_lrmd_cmd(request);
 	schedule_lrmd_cmd(rsc, cmd);
 
-	return call_id;
+	return cmd->call_id;
+}
+
+static int
+process_lrmd_rsc_cancel(lrmd_client_t *client, xmlNode *request)
+{
+	GListPtr gIter = NULL;
+	lrmd_rsc_t *rsc = NULL;
+	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
+	const char *rsc_id = crm_element_value(rsc_xml, F_LRMD_RSC_ID);
+	int cancel_call_id = 0;
+
+	crm_element_value_int(rsc_xml, F_LRMD_CANCEL_CALLID, &cancel_call_id);
+
+	if (!rsc_id || !cancel_call_id) {
+		return lrmd_err_missing;
+	}
+
+	if (!(rsc = g_hash_table_lookup(rsc_list, rsc_id))) {
+		return lrmd_err_unknown_rsc;
+	}
+
+	for (gIter = rsc->recurring_ops; gIter != NULL; gIter = gIter->next) {
+		lrmd_cmd_t *cmd = gIter->data;
+		if (cmd->call_id == cancel_call_id) {
+			if (services_action_cancel(cmd->cmd_id, cmd->action, cmd->interval)) {
+				return lrmd_ok;
+			} else {
+				return lrmd_err_unknown_callid;
+			}
+		}
+    }
+
+	return lrmd_err_unknown_callid;
 }
 
 void
@@ -388,6 +469,9 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 		do_reply = 1;
 	} else if (crm_str_eq(op, LRMD_OP_RSC_EXEC, TRUE)) {
 		rc = process_lrmd_rsc_exec(client, request);
+		do_reply = 1;
+	} else if (crm_str_eq(op, LRMD_OP_RSC_CANCEL, TRUE)) {
+		rc = process_lrmd_rsc_cancel(client, request);
 		do_reply = 1;
 	} else {
 		rc = lrmd_err_unknown_operation;

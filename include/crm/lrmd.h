@@ -29,10 +29,12 @@ struct lrmd_key_value_t;
 #define F_LRMD_CLIENTID         "lrmd_clientid"
 #define F_LRMD_CALLBACK_TOKEN	"lrmd_async_id"
 #define F_LRMD_CALLID           "lrmd_callid"
+#define F_LRMD_CANCEL_CALLID    "lrmd_cancel_callid"
 #define F_LRMD_CALLOPTS         "lrmd_callopt"
 #define F_LRMD_CALLDATA         "lrmd_calldata"
 #define F_LRMD_RC               "lrmd_rc"
 #define F_LRMD_EXEC_RC          "lrmd_exec_rc"
+#define F_LRMD_OP_STATUS        "lrmd_exec_op_status"
 #define F_LRMD_TIMEOUT          "lrmd_timeout"
 #define F_LRMD_CLASS            "lrmd_class"
 #define F_LRMD_PROVIDER         "lrmd_provider"
@@ -49,6 +51,7 @@ struct lrmd_key_value_t;
 
 #define LRMD_OP_RSC_REG           "lrmd_rsc_register"
 #define LRMD_OP_RSC_EXEC          "lrmd_rsc_exec"
+#define LRMD_OP_RSC_CANCEL        "lrmd_rsc_cancel"
 #define LRMD_OP_RSC_UNREG         "lrmd_rsc_unregister"
 #define LRMD_OP_RSC_CALL          "lrmd_rsc_call"
 #define LRMD_OP_RSC_GET_METADATA  "lrmd_rsc_metadata"
@@ -86,8 +89,8 @@ enum lrmd_errors {
 	lrmd_err_none_available      = -13,
 	lrmd_err_authentication      = -14,
 	lrmd_err_signal              = -15,
-	/* command failed to execute, do not expect notify event to occur. */
 	lrmd_err_exec_failed         = -16,
+	lrmd_err_unknown_callid      = -17,
 };
 
 enum lrmd_callback_event {
@@ -103,6 +106,7 @@ typedef struct lrmd_event_data_s {
 	int rc; /* api return code */
 	int exec_rc; /* executed ra return code */
 	int call_id;
+	int lrmd_op_status;
 } lrmd_event_data_t;
 
 typedef void (*lrmd_event_callback)(lrmd_event_data_t *event, void *userdata);
@@ -148,7 +152,7 @@ typedef struct lrmd_api_operations_s
 		const char *action,
 		int interval, /* ms */
 		int timeout, /* ms */
-		int start_delay, /* ms */
+		int start_delay, /* ms TODO IMPLEMENT START DELAY. it is ignored right now.*/
 		enum lrmd_call_options options,
 		lrmd_key_value_t *params); /* ownership of params is given up to api here */
 
@@ -157,8 +161,9 @@ typedef struct lrmd_api_operations_s
 	 *
 	 * \retval 0, cancel command sent.
 	 */
-	/* TODO IMPLEMENT */
-	int (*cancel)(lrmd_t *lrmd, const char *call_id);
+	int (*cancel)(lrmd_t *lrmd,
+		const char *rsc_id,
+		int call_id);
 
 } lrmd_api_operations_t;
 

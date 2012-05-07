@@ -119,6 +119,7 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 		event.type = lrmd_event_unregister;
 	} else if (crm_str_eq(type, LRMD_OP_RSC_CALL, TRUE)) {
 		crm_element_value_int(msg, F_LRMD_EXEC_RC, &event.exec_rc);
+		crm_element_value_int(msg, F_LRMD_OP_STATUS, &event.lrmd_op_status);
 		event.exec_id = crm_element_value(msg, F_LRMD_RSC_CMD_ID);
 		event.type = lrmd_event_call_complete;
 	}
@@ -440,6 +441,20 @@ lrmd_api_exec(lrmd_t *lrmd,
 	return rc;
 }
 
+static int
+lrmd_api_cancel(lrmd_t *lrmd, const char *rsc_id, int call_id)
+{
+	int rc = lrmd_ok;
+	xmlNode *data = create_xml_node(NULL, F_LRMD_RSC);
+
+	crm_xml_add(data, F_LRMD_ORIGIN, __FUNCTION__);
+	crm_xml_add_int(data, F_LRMD_CANCEL_CALLID, call_id);
+	crm_xml_add(data, F_LRMD_RSC_ID, rsc_id);
+	rc = lrmd_send_command(lrmd, LRMD_OP_RSC_CANCEL, data, NULL, 0, 0);
+	free_xml(data);
+	return rc;
+}
+
 lrmd_t *
 lrmd_api_new(void)
 {
@@ -459,6 +474,7 @@ lrmd_api_new(void)
 	new_lrmd->cmds->set_callback = lrmd_api_set_callback;
 	new_lrmd->cmds->get_metadata = lrmd_api_get_metadata;
 	new_lrmd->cmds->exec = lrmd_api_exec;
+	new_lrmd->cmds->cancel = lrmd_api_cancel;
 
 	return new_lrmd;
 }

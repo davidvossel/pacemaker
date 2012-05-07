@@ -36,6 +36,7 @@ typedef struct lrmd_rsc_s {
 	int active;
 
 	GList *pending_ops;
+	GList *recurring_ops;
 	crm_trigger_t *work;
 } lrmd_rsc_t;
 
