@@ -71,15 +71,14 @@ static struct {
 } options;
 
 #define report_event(event)	\
-	crm_info("NEW_EVENT"); \
-	crm_info("event_type: %d", event->type); \
-	crm_info("rsc_id: %s", event->rsc_id); \
-	crm_info("exec_id: %s", event->exec_id); \
-	crm_info("rc: %d", event->rc); \
-	crm_info("exec_rc: %d", event->exec_rc); \
-	crm_info("call_id: %d", event->call_id); \
-	crm_info("op_status: %d", event->lrmd_op_status); \
-	crm_info("END_EVENT");	\
+	crm_info("NEW_EVENT event_type:%d rsc_id:%s exec_id:%s rc:%d exec_rc:%d call_id:%d op_status:%d", \
+		event->type,	\
+		event->rsc_id,	\
+		event->exec_id,	\
+		event->rc,	\
+		event->exec_rc,	\
+		event->call_id,	\
+		event->lrmd_op_status);	\
 
 static void
 test_shutdown(int nsig)
