@@ -123,7 +123,7 @@ start_test(gpointer user_data)
 	} else {
 		crm_info("lrmd client connection failed");
 	}
-	rc = lrmd_conn->cmds->set_callback(lrmd_conn, NULL, read_events);
+	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, read_events);
 
 	if (!options.api_call) {
 		return 0;
