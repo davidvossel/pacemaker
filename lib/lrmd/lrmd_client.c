@@ -382,15 +382,13 @@ lrmd_api_unregister_rsc(lrmd_t *lrmd,
 	return rc;
 }
 
-static int
+static void
 lrmd_api_set_callback(lrmd_t *lrmd, void *userdata, lrmd_event_callback callback)
 {
 	lrmd_private_t *native = lrmd->private;
 
 	native->callback = callback;
 	native->callback_userdata = userdata;
-
-	return lrmd_ok;
 }
 
 static int

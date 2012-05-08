@@ -99,12 +99,19 @@ enum lrmd_callback_event {
 };
 
 typedef struct lrmd_event_data_s {
+	/* type of event */
 	enum lrmd_callback_event type;
+	/* the resource this event occurred on. */
 	const char *rsc_id;
+	/* the id given to the exec api call this even is in response to */
 	const char *exec_id;
-	int rc; /* api return code */
-	int exec_rc; /* executed ra return code */
+	/* api return code */
+	int rc;
+	/* executed ra return code */
+	int exec_rc;
+	/* client api call id associated with this event */
 	int call_id;
+	/* the lrmd status returned for exec_complete events */
 	int lrmd_op_status;
 } lrmd_event_data_t;
 
@@ -112,10 +119,30 @@ typedef void (*lrmd_event_callback)(lrmd_event_data_t *event, void *userdata);
 
 typedef struct lrmd_api_operations_s
 {
+	/*!
+	 * \brief Connect from the lrmd.
+	 *
+	 * \note This must be done before executing any other API functions.
+	 *
+	 * \retval 0, success
+	 * \retval negative error code or failure
+	 */
 	int (*connect) (lrmd_t *lrmd, const char *client_name, int *lrmd_fd);
 
+	/*!
+	 * \brief Disconnect from the lrmd.
+	 *
+	 * \retval 0, success
+	 * \retval negative error code or failure
+	 */
 	int (*disconnect)(lrmd_t *lrmd);
 
+	/*!
+	 * \brief Register a resource with the lrmd.
+	 *
+	 * \retval 0, success
+	 * \retval negative error code or failure
+	 */
 	int (*register_rsc) (lrmd_t *lrmd,
 		const char *rsc_id,
 		const char *class,
@@ -123,11 +150,24 @@ typedef struct lrmd_api_operations_s
 		const char *type,
 		enum lrmd_call_options options);
 
+	/*!
+	 * \brief Unregister a resource from the lrmd.
+	 *
+	 * \note All pending and recurring operations will be cancelled
+	 *       automatically.
+	 *
+	 * \retval 0, success
+	 * \retval negative error code or failure
+	 *
+	 */
 	int (*unregister_rsc) (lrmd_t *lrmd,
 		const char *rsc_id,
 		enum lrmd_call_options options);
 
-	int (*set_callback) (lrmd_t *lrmd,
+	/*!
+	 * \brief Sets the callback to receive lrmd events on.
+	 */
+	void (*set_callback) (lrmd_t *lrmd,
 		void *userdata,
 		lrmd_event_callback callback);
 
@@ -142,6 +182,12 @@ typedef struct lrmd_api_operations_s
 	/*!
 	 * \brief Issue a command on a resource
 	 *
+	 * \note Operations on individual resources are guaranteed to occur
+	 *       in the order the client api calls them in.
+	 *
+	 * \note Operations between different resources are not guaranteed
+	 *       to occur in any specific order in relation to one another
+	 *       regardless of what order the client api is called in.
 	 * \retval call_id to track async event result on success
 	 * \retval negative error code or failure
 	 */
@@ -158,7 +204,23 @@ typedef struct lrmd_api_operations_s
 	/*!
 	 * \brief Cancel a recurring command.
 	 *
+	 * \note The cancel is completed async from this call.
+	 *       We can be guaranteed the cancel has completed once
+	 *       the callback receives an exec_complete event with
+	 *       the lrmd_op_status signifying that the operation is
+	 *       cancelled.
+	 * \note For each resource, cancel operations and exec operations
+	 *       are processed in the order they are received.
+	 *       It is safe to assume that for a single resource, a cancel
+	 *       will occur in the lrmd before an exec if the client's cancel
+	 *       api call occurs before the exec api call.
+	 *
+	 *       It is not however safe to assume any operation on one resource will
+	 *       occur before an operation on another resource regardless of
+	 *       the order the client api is called in.
+	 *
 	 * \retval 0, cancel command sent.
+	 * \retval negative error code or failure
 	 */
 	int (*cancel)(lrmd_t *lrmd,
 		const char *rsc_id,
