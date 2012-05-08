@@ -156,7 +156,7 @@ start_test(gpointer user_data)
 	if (safe_str_eq(options.api_call, "exec")) {
 		char buf[512];
 		snprintf(buf, 512, "%s_%s_%d",
-			options.rsc_id, options.api_call, options.interval);
+			options.rsc_id, options.action, options.interval);
 		rc = lrmd_conn->cmds->exec(lrmd_conn,
 			buf,
 			options.rsc_id,
