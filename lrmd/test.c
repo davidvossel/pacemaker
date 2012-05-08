@@ -34,7 +34,11 @@ lrmd_t *lrmd_conn = NULL;
 /* *INDENT-OFF* */
 static struct crm_option long_options[] = {
 	{"help",             0, 0, '?'},
-	{"listen",           0, 0, 'l'},
+	/* just incase we have to add data to events,
+	 * we don't want break a billion regression tests. Instead
+	 * we'll create different versions */
+	{"event-version",     1, 0, 'e'},
+	{"listen",           1, 0, 'l'},
 	{"api-call",         1, 0, 'c'},
 	{"action",           1, 0, 'a'},
 	{"rsc-id",           1, 0, 'r'},
@@ -55,23 +59,26 @@ static int exec_call_id = 0;
 
 static struct {
 	int print;
-	int listen;
 	int interval;
 	int timeout;
 	int start_delay;
 	int cancel_call_id;
+	int event_version;
 	const char *api_call;
 	const char *rsc_id;
 	const char *provider;
 	const char *class;
 	const char *type;
 	const char *action;
+	const char *listen;
 	lrmd_key_value_t *params;
 
 } options;
 
+static char event_buf_v0[1024];
+
 #define report_event(event)	\
-	crm_info("NEW_EVENT event_type:%d rsc_id:%s exec_id:%s rc:%d exec_rc:%d call_id:%d op_status:%d", \
+	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s exec_id:%s rc:%d exec_rc:%d call_id:%d op_status:%d", \
 		event->type,	\
 		event->rsc_id,	\
 		event->exec_id,	\
@@ -79,6 +86,7 @@ static struct {
 		event->exec_rc,	\
 		event->call_id,	\
 		event->lrmd_op_status);	\
+	crm_info("%s", event_buf_v0);;
 
 static void
 test_shutdown(int nsig)
@@ -89,8 +97,12 @@ test_shutdown(int nsig)
 static void
 read_events(lrmd_event_data_t *event, void *userdata)
 {
+	report_event(event);
 	if (options.listen) {
-		report_event(event);
+		if (safe_str_eq(options.listen, event_buf_v0)) {
+			crm_info("ACTION SUCCESSFUL");
+			exit(0);
+		}
 	}
 
 	if (exec_call_id && (event->call_id == exec_call_id)) {
@@ -104,9 +116,18 @@ read_events(lrmd_event_data_t *event, void *userdata)
 		}
 
 		if (!options.listen) {
-			exit(1);
+			exit(0);
 		}
 	}
+}
+
+static gboolean
+timeout_err(gpointer data)
+{
+	crm_info("FAILURE timeout occurred");
+	exit(-1);
+
+	return FALSE;
 }
 
 static gboolean
@@ -123,6 +144,10 @@ start_test(gpointer user_data)
 		crm_info("lrmd client connection failed");
 	}
 	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, read_events);
+
+	if (options.timeout) {
+		g_timeout_add(options.timeout, timeout_err, NULL);
+	}
 
 	if (!options.api_call) {
 		return 0;
@@ -175,7 +200,7 @@ start_test(gpointer user_data)
 	if (options.action && rc == lrmd_ok) {
 		crm_info("ACTION SUCCESSFUL");
 		if (!options.listen) {
-			exit(1);
+			exit(0);
 		}
 	}
 
@@ -204,8 +229,11 @@ int main(int argc, char ** argv)
 		case '?':
 			crm_help(flag, LSB_EXIT_OK);
 			break;
+		case 'e':
+			options.event_version = atoi(optarg);
+			break;
 		case 'l':
-			options.listen = 1;
+			options.listen = optarg;
 			break;
 		case 'c':
 			options.api_call = optarg;
