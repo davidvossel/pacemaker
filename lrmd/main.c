@@ -157,7 +157,7 @@ main(int argc, char ** argv)
 
 	if (ipcs == NULL) {
 		crm_err("Failed to start IPC server");
-		return 1;
+		return -1;
 	}
 
 	mainloop_track_children(G_PRIORITY_HIGH);

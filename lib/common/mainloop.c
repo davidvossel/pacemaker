@@ -424,7 +424,11 @@ qb_ipcs_service_t *mainloop_add_ipc_server(
 
     server = qb_ipcs_create(name, 0, pick_ipc_type(type), callbacks);
     qb_ipcs_poll_handlers_set(server, &gio_poll_funcs);
-    qb_ipcs_run(server);
+
+    if (qb_ipcs_run(server)) {
+        crm_err("IPC server %s failed to run. errno %d", name, errno);
+        return NULL;
+    }
 
     return server;
 }

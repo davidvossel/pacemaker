@@ -17,7 +17,9 @@
 
 MAINTAINERCLEANFILES = Makefile.in
 
-sbin_PROGRAMS  = lrmd lrmd_test
+## binary progs
+sbin_PROGRAMS  = lrmd
+noinst_PROGRAMS = lrmd_test
 
 lrmd_SOURCES	= main.c lrmd.c
 lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
@@ -26,5 +28,3 @@ lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
 lrmd_test_SOURCES	= test.c
 lrmd_test_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
 			$(top_builddir)/lib/lrmd/liblrmd.la
-
-CFLAGS			= $(CFLAGS_COPY:-Werror=)
