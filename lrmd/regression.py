@@ -32,11 +32,14 @@ class Test:
 		self.result_txt = ""
 		self.result_exitcode = 0;
 
-	def add_cmd(self, cmd):
-		self.cmds.append([self.test_tool_location, cmd, 0])
+	def add_sys_cmd(self, cmd, args):
+		self.cmds.append([cmd, args, 0])
 
-	def add_expected_fail_cmd(self, cmd):
-		self.cmds.append([self.test_tool_location, cmd, 255])
+	def add_cmd(self, args):
+		self.cmds.append([self.test_tool_location, args, 0])
+
+	def add_expected_fail_cmd(self, args):
+		self.cmds.append([self.test_tool_location, args, 255])
 
 	def get_exitcode(self):
 		return self.result_exitcode
@@ -59,7 +62,6 @@ class Test:
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
 		lrmd = subprocess.Popen("./lrmd")
-		time.sleep(1) # terrible
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != cmd[2]:
@@ -67,7 +69,7 @@ class Test:
 				self.result_exitcode = res
 				break
 			i = i + 1
-		print "RESULT: %s\nEND LRMD LRMD TEST %s \n" % (self.name, self.result_txt)
+		print "END LRMD '%s' TEST - %s \n" % (self.name, self.result_txt)
 		lrmd.kill()
 
 		return res
@@ -91,14 +93,14 @@ class Tests:
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 
 		### start/stop test ###
@@ -108,24 +110,24 @@ class Tests:
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"start\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"stop\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 
 		### monitor test ###
@@ -135,74 +137,109 @@ class Tests:
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"start\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"monitor\" "
 			"-i \"1000\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"stop\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 
 		### monitor and cancel test ###
-		test = self.new_test("monitor_and_cancel_test", "Register a test, the start, monitor a few times, then stop");
+		test = self.new_test("monitor_and_cancel_test", "Register a test, the start, monitor a few times, then cancel the monitor");
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"start\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"monitor\" "
 			"-i \"100\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
-		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" -t 2000")
-		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" -t 2000")
-		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" -t 2000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
 		test.add_cmd("-c cancel "
 			"-r \"test_rsc\" "
 			"-a \"monitor\" "
 			"-i \"100\" "
 			"-t \"1000\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_CANCELLED\" ")
-		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" -t 1000")
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ")
+		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"stop\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK call_id:1 op_status:OP_DONE\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
+
+		### monitor fail ###
+		test = self.new_test("monitor_fail_test", "Register a test, the start, monitor a few times, then make the monitor fail.");
+		test.add_cmd("-c register_rsc "
+			"-r \"test_rsc\" "
+			"-C \"ocf\" "
+			"-P \"pacemaker\" "
+			"-T \"Dummy\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
+			"-t 1000")
+		test.add_cmd("-c exec "
+			"-r \"test_rsc\" "
+			"-a \"start\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
+			"-t 1000")
+		test.add_cmd("-c exec "
+			"-r \"test_rsc\" "
+			"-a \"monitor\" "
+			"-i \"100\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
+			"-t 1000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
+		test.add_sys_cmd("rm", "-f /var/run/Dummy-test_rsc.state")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_DONE\" -t 2000")
+		test.add_cmd("-c cancel "
+			"-r \"test_rsc\" "
+			"-a \"monitor\" "
+			"-i \"100\" "
+			"-t \"1000\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_CANCELLED\" ")
+		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_DONE\" -t 1000")
+		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
+
+
 
 
 	def run_tests(self):

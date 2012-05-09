@@ -78,13 +78,12 @@ static struct {
 static char event_buf_v0[1024];
 
 #define report_event(event)	\
-	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s action:%s rc:%d exec_rc:%s call_id:%d op_status:%s", \
+	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s action:%s rc:%d exec_rc:%s op_status:%s", \
 		event->type,	\
 		event->rsc_id,	\
 		event->action ? event->action : "none",	\
 		event->rc,	\
 		services_ocf_exitcode_str(event->exec_rc),	\
-		event->call_id,	\
 		services_lrm_status_str(event->lrmd_op_status));	\
 	crm_info("%s", event_buf_v0);;
 
@@ -130,19 +129,38 @@ timeout_err(gpointer data)
 	return FALSE;
 }
 
+static void
+try_connect(void)
+{
+	int tries = 10;
+	int i = 0;
+	int rc = 0;
+
+	lrmd_conn = lrmd_api_new();
+
+	for (i = 0; i < tries; i++) {
+		rc = lrmd_conn->cmds->connect(lrmd_conn, "lrmd_ctest", NULL);
+
+		if (!rc) {
+			crm_info("lrmd client connection established");
+			return;
+		} else {
+			crm_info("lrmd client connection failed");
+		}
+		sleep(1);
+	}
+
+	crm_err("API CONNECTION FAILURE");
+	exit(-1);
+}
+
 static gboolean
 start_test(gpointer user_data)
 {
-	int rc;
+	int rc = 0;
 
-	lrmd_conn = lrmd_api_new();
-	rc = lrmd_conn->cmds->connect(lrmd_conn, "lrmd_ctest", NULL);
+	try_connect();
 
-	if (!rc) {
-		crm_info("lrmd client connection established");
-	} else {
-		crm_info("lrmd client connection failed");
-	}
 	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, read_events);
 
 	if (options.timeout) {
