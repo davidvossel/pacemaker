@@ -33,7 +33,10 @@ class Test:
 		self.result_exitcode = 0;
 
 	def add_cmd(self, cmd):
-		self.cmds.append(cmd)
+		self.cmds.append([self.test_tool_location, cmd, 0])
+
+	def add_expected_fail_cmd(self, cmd):
+		self.cmds.append([self.test_tool_location, cmd, 255])
 
 	def get_exitcode(self):
 		return self.result_exitcode
@@ -42,14 +45,16 @@ class Test:
 		print "    %s" % self.result_txt
 
 	def run_cmd(self, args):
-		cmd = shlex.split(args)
-		cmd.insert(0, self.test_tool_location)
+
+		cmd = shlex.split(args[1])
+		cmd.insert(0, args[0])
 		test = subprocess.Popen(cmd)
 		test.wait()
-		return test.returncode
+		return test.returncode;
 
 	def run(self):
 		res = 0
+		i = 1
 		print "\nBEGIN LRMD TEST %s " % self.name
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
@@ -57,10 +62,11 @@ class Test:
 		time.sleep(1) # terrible
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
-			if res != 0:
-				self.result_txt = "FAILURE - '%s' on cmd '%s'" % (self.name, cmd)
+			if res != cmd[2]:
+				self.result_txt = "FAILURE - '%s' failed on cmd iteration %d" % (self.name, i)
 				self.result_exitcode = res
 				break
+			i = i + 1
 		print "RESULT: %s\nEND LRMD LRMD TEST %s \n" % (self.name, self.result_txt)
 		lrmd.kill()
 
@@ -155,8 +161,49 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 
-
 		### multi monitor and cancel test ###
+		test = self.new_test("monitor_test", "Register a test, the start, monitor a few times, then stop");
+		test.add_cmd("-c register_rsc "
+			"-r \"test_rsc\" "
+			"-C \"ocf\" "
+			"-P \"pacemaker\" "
+			"-T \"Dummy\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-t 1000")
+		test.add_cmd("-c exec "
+			"-r \"test_rsc\" "
+			"-a \"start\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-t 1000")
+		test.add_cmd("-c exec "
+			"-r \"test_rsc\" "
+			"-a \"monitor\" "
+			"-i \"100\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-t 1000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:0 call_id:1 op_status:0\" -t 2000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:0 call_id:1 op_status:0\" -t 2000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:0 call_id:1 op_status:0\" -t 2000")
+		test.add_cmd("-c cancel "
+			"-r \"test_rsc\" "
+			"-a \"monitor\" "
+			"-i \"100\" "
+			"-t \"1000\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:0 call_id:1 op_status:1\" ")
+		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:0 call_id:1 op_status:0\" -t 1000")
+		test.add_cmd("-c exec "
+			"-r \"test_rsc\" "
+			"-a \"stop\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-t 1000")
+		test.add_cmd("-c unregister_rsc "
+			"-r \"test_rsc\" "
+			"-C \"ocf\" "
+			"-P \"pacemaker\" "
+			"-T \"Dummy\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-t 1000")
+
 
 	def run_tests(self):
 		for test in self.tests:

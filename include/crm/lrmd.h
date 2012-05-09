@@ -88,7 +88,6 @@ enum lrmd_errors {
 	lrmd_err_authentication      = -14,
 	lrmd_err_signal              = -15,
 	lrmd_err_exec_failed         = -16,
-	lrmd_err_unknown_callid      = -17,
 };
 
 enum lrmd_callback_event {
@@ -222,7 +221,8 @@ typedef struct lrmd_api_operations_s
 	 */
 	int (*cancel)(lrmd_t *lrmd,
 		const char *rsc_id,
-		int call_id);
+		const char *action,
+		int interval);
 
 } lrmd_api_operations_t;
 

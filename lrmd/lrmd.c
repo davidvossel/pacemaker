@@ -265,6 +265,7 @@ lrmd_rsc_execute(lrmd_rsc_t *rsc)
 		rsc->class,
 		rsc->provider,
 		rsc->type);
+
 	action = resources_action_create(rsc->rsc_id,
 		rsc->class,
 		rsc->provider,
@@ -416,34 +417,22 @@ process_lrmd_rsc_exec(lrmd_client_t *client, xmlNode *request)
 static int
 process_lrmd_rsc_cancel(lrmd_client_t *client, xmlNode *request)
 {
-	GListPtr gIter = NULL;
-	lrmd_rsc_t *rsc = NULL;
 	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
 	const char *rsc_id = crm_element_value(rsc_xml, F_LRMD_RSC_ID);
-	int cancel_call_id = 0;
+	const char *action = crm_element_value(rsc_xml, F_LRMD_RSC_ACTION);
+	int interval = 0;
 
-	crm_element_value_int(rsc_xml, F_LRMD_CANCEL_CALLID, &cancel_call_id);
+	crm_element_value_int(rsc_xml, F_LRMD_RSC_INTERVAL, &interval);
 
-	if (!rsc_id || !cancel_call_id) {
+	if (!rsc_id || !action) {
 		return lrmd_err_missing;
 	}
 
-	if (!(rsc = g_hash_table_lookup(rsc_list, rsc_id))) {
-		return lrmd_err_unknown_rsc;
+	if (services_action_cancel(rsc_id, action, interval)) {
+		return lrmd_ok;
 	}
 
-	for (gIter = rsc->recurring_ops; gIter != NULL; gIter = gIter->next) {
-		lrmd_cmd_t *cmd = gIter->data;
-		if (cmd->call_id == cancel_call_id) {
-			if (services_action_cancel(rsc->rsc_id, cmd->action, cmd->interval)) {
-				return lrmd_ok;
-			} else {
-				return lrmd_err_unknown_callid;
-			}
-		}
-    }
-
-	return lrmd_err_unknown_callid;
+	return lrmd_err_unknown_operation;
 }
 
 void

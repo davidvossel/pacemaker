@@ -182,7 +182,8 @@ start_test(gpointer user_data)
 	} else if (safe_str_eq(options.api_call, "cancel")) {
 		rc = lrmd_conn->cmds->cancel(lrmd_conn,
 			options.rsc_id,
-			options.cancel_call_id);
+			options.action,
+			options.interval);
 	} else if (options.action) {
 		crm_err("API FAILURE unknown action '%s'", options.action);
 		exit(-1);

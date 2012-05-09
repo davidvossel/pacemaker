@@ -438,14 +438,18 @@ lrmd_api_exec(lrmd_t *lrmd,
 }
 
 static int
-lrmd_api_cancel(lrmd_t *lrmd, const char *rsc_id, int call_id)
+lrmd_api_cancel(lrmd_t *lrmd,
+		const char *rsc_id,
+		const char *action,
+		int interval)
 {
 	int rc = lrmd_ok;
 	xmlNode *data = create_xml_node(NULL, F_LRMD_RSC);
 
 	crm_xml_add(data, F_LRMD_ORIGIN, __FUNCTION__);
-	crm_xml_add_int(data, F_LRMD_CANCEL_CALLID, call_id);
+	crm_xml_add(data, F_LRMD_RSC_ACTION, action);
 	crm_xml_add(data, F_LRMD_RSC_ID, rsc_id);
+	crm_xml_add_int(data, F_LRMD_RSC_INTERVAL, interval);
 	rc = lrmd_send_command(lrmd, LRMD_OP_RSC_CANCEL, data, NULL, 0, 0);
 	free_xml(data);
 	return rc;
