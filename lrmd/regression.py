@@ -18,6 +18,7 @@ import os
 import sys
 import subprocess
 import shlex
+import time
 
 class Test:
 	def __init__(self, name, description, lrmd_location, test_tool_location):
@@ -53,6 +54,7 @@ class Test:
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
 		lrmd = subprocess.Popen("./lrmd")
+		time.sleep(1) # terrible
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != 0:
@@ -83,14 +85,14 @@ class Tests:
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc exec_id:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc exec_id:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 
 		### start/stop test ###
@@ -100,24 +102,24 @@ class Tests:
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc exec_id:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"start\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc exec_id:test_rsc_start_0 rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"stop\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc exec_id:test_rsc_stop_0 rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc exec_id:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 
 		### monitor test ###
@@ -127,30 +129,30 @@ class Tests:
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc exec_id:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"start\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc exec_id:test_rsc_start_0 rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"monitor\" "
 			"-i \"1000\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc exec_id:test_rsc_monitor_1000 rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c exec "
 			"-r \"test_rsc\" "
 			"-a \"stop\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc exec_id:test_rsc_stop_0 rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
 			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc exec_id:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:(null) rc:0 exec_rc:0 call_id:1 op_status:0\" "
 			"-t 1000")
 
 

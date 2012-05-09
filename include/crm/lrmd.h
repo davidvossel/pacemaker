@@ -41,7 +41,6 @@ struct lrmd_key_value_t;
 #define F_LRMD_TYPE             "lrmd_type"
 #define F_LRMD_ORIGIN           "lrmd_origin"
 #define F_LRMD_RSC_ID           "lrmd_rsc_id"
-#define F_LRMD_RSC_CMD_ID       "lrmd_rsc_cmd_id"
 #define F_LRMD_RSC_ACTION       "lrmd_rsc_action"
 #define F_LRMD_RSC_START_DELAY  "lrmd_rsc_start_delay"
 #define F_LRMD_RSC_INTERVAL     "lrmd_rsc_interval"
@@ -103,8 +102,8 @@ typedef struct lrmd_event_data_s {
 	enum lrmd_callback_event type;
 	/* the resource this event occurred on. */
 	const char *rsc_id;
-	/* the id given to the exec api call this even is in response to */
-	const char *exec_id;
+	/* the action performed */
+	const char *action;
 	/* api return code */
 	int rc;
 	/* executed ra return code */
@@ -192,7 +191,6 @@ typedef struct lrmd_api_operations_s
 	 * \retval negative error code or failure
 	 */
 	int (*exec)(lrmd_t *lrmd,
-		const char *id,
 		const char *rsc_id,
 		const char *action,
 		int interval, /* ms */

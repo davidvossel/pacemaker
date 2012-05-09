@@ -44,7 +44,6 @@ typedef struct lrmd_cmd_s {
 
 	char *origin;
 	char *rsc_id;
-	char *cmd_id;
 	char *action;
 
 	GHashTable *params;
@@ -83,7 +82,6 @@ create_lrmd_cmd(xmlNode *msg)
 	cmd->origin = crm_element_value_copy(rsc_xml, F_LRMD_ORIGIN);
 	cmd->action = crm_element_value_copy(rsc_xml, F_LRMD_RSC_ACTION);
 	cmd->rsc_id = crm_element_value_copy(rsc_xml, F_LRMD_RSC_ID);
-	cmd->cmd_id = crm_element_value_copy(rsc_xml, F_LRMD_RSC_CMD_ID);
 
 	cmd->params = xml2list(rsc_xml);
 
@@ -99,7 +97,6 @@ free_lrmd_cmd(lrmd_cmd_t *cmd)
 	crm_free(cmd->origin);
 	crm_free(cmd->action);
 	crm_free(cmd->rsc_id);
-	crm_free(cmd->cmd_id);
 	crm_free(cmd);
 }
 
@@ -140,13 +137,13 @@ send_client_notify(gpointer key, gpointer value, gpointer user_data)
 	lrmd_client_t *client = value;
 
 	if (client == NULL) {
-		crm_trace("Skipping NULL client");
+		crm_err("Asked to send event to  NULL client");
 		return;
 	} else if (client->channel == NULL) {
-		crm_trace("Skipping client with NULL channel");
+		crm_trace("Asked to send event to disconnected client");
 		return;
 	} else if (client->name == NULL) {
-		crm_trace("Skipping unnammed client / comamnd channel");
+		crm_trace("Asked to send event to client with no name");
 		return;
 	}
 
@@ -169,7 +166,7 @@ send_cmd_complete_notify(lrmd_cmd_t *cmd)
 	crm_xml_add_int(notify, F_LRMD_CALLID, cmd->call_id);
 	crm_xml_add(notify, F_LRMD_OPERATION, LRMD_OP_RSC_EXEC);
 	crm_xml_add(notify, F_LRMD_RSC_ID, cmd->rsc_id);
-	crm_xml_add(notify, F_LRMD_RSC_CMD_ID, cmd->cmd_id);
+	crm_xml_add(notify, F_LRMD_RSC_ACTION, cmd->action);
 
 	g_hash_table_foreach(client_list, send_client_notify, notify);
 
@@ -202,7 +199,7 @@ send_generic_notify(int rc, xmlNode *request)
 static void
 cmd_finalize(lrmd_cmd_t *cmd, lrmd_rsc_t *rsc)
 {
-	crm_trace("Resource operation %s completed", cmd->cmd_id);
+	crm_trace("Resource operation rsc:%s action:%s completed", cmd->rsc_id, cmd->action);
 	send_cmd_complete_notify(cmd);
 
 	if (rsc) {
@@ -210,8 +207,8 @@ cmd_finalize(lrmd_cmd_t *cmd, lrmd_rsc_t *rsc)
 		mainloop_set_trigger(rsc->work);
 	}
 
-	if (cmd->lrmd_op_status < PCMK_LRM_OP_DONE) {
-		if (rsc && cmd->interval) {
+	if (cmd->interval && (cmd->lrmd_op_status == PCMK_LRM_OP_CANCELLED)) {
+		if (rsc) {
 			rsc->recurring_ops = g_list_remove(rsc->recurring_ops, cmd);
 		}
 		free_lrmd_cmd(cmd);
@@ -262,8 +259,13 @@ lrmd_rsc_execute(lrmd_rsc_t *rsc)
 		return TRUE;
 	}
 
-	crm_trace("Creating action, id:%s action:%s", cmd->cmd_id, cmd->action);
-	action = resources_action_create(cmd->cmd_id,
+	crm_trace("Creating action, resource:%s action:%s class:%s provider:%s agent:%s",
+		rsc->rsc_id,
+		cmd->action,
+		rsc->class,
+		rsc->provider,
+		rsc->type);
+	action = resources_action_create(rsc->rsc_id,
 		rsc->class,
 		rsc->provider,
 		rsc->type,
@@ -274,7 +276,7 @@ lrmd_rsc_execute(lrmd_rsc_t *rsc)
 
 	cmd->params = NULL; /* We no longer own the params */
 	if (!action) {
-		crm_err("Failed to create action, id:%s action:%s on resource %s", cmd->cmd_id, cmd->action, rsc->rsc_id);
+		crm_err("Failed to create action, action:%s on resource %s", cmd->action, rsc->rsc_id);
 		cmd->rc = lrmd_err_exec_failed;
 		goto exec_done;
 	}
@@ -329,7 +331,7 @@ free_rsc(gpointer data)
 		 * let service library cancel it and tell us via the callback
 		 * when it is cancelled. The rsc can be safely destroyed
 		 * even if we are waiting for the cancel result */
-		services_action_cancel(cmd->cmd_id, cmd->action, cmd->interval);
+		services_action_cancel(rsc->rsc_id, cmd->action, cmd->interval);
     }
 	/* frees list, but not list elements. */
     g_list_free(rsc->recurring_ops);
@@ -433,7 +435,7 @@ process_lrmd_rsc_cancel(lrmd_client_t *client, xmlNode *request)
 	for (gIter = rsc->recurring_ops; gIter != NULL; gIter = gIter->next) {
 		lrmd_cmd_t *cmd = gIter->data;
 		if (cmd->call_id == cancel_call_id) {
-			if (services_action_cancel(cmd->cmd_id, cmd->action, cmd->interval)) {
+			if (services_action_cancel(rsc->rsc_id, cmd->action, cmd->interval)) {
 				return lrmd_ok;
 			} else {
 				return lrmd_err_unknown_callid;

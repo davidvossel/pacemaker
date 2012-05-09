@@ -120,7 +120,7 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
 	} else if (crm_str_eq(type, LRMD_OP_RSC_EXEC, TRUE)) {
 		crm_element_value_int(msg, F_LRMD_EXEC_RC, &event.exec_rc);
 		crm_element_value_int(msg, F_LRMD_OP_STATUS, &event.lrmd_op_status);
-		event.exec_id = crm_element_value(msg, F_LRMD_RSC_CMD_ID);
+		event.action = crm_element_value(msg, F_LRMD_RSC_ACTION);
 		event.type = lrmd_event_exec_complete;
 	}
 
@@ -407,7 +407,6 @@ lrmd_api_get_metadata (lrmd_t *lrmd,
 
 static int
 lrmd_api_exec(lrmd_t *lrmd,
-	const char *id,
 	const char *rsc_id,
 	const char *action,
 	int interval, /* ms */
@@ -421,7 +420,6 @@ lrmd_api_exec(lrmd_t *lrmd,
 	xmlNode *args = create_xml_node(data, XML_TAG_ATTRS);
 
 	crm_xml_add(data, F_LRMD_ORIGIN, __FUNCTION__);
-	crm_xml_add(data, F_LRMD_RSC_CMD_ID, id);
 	crm_xml_add(data, F_LRMD_RSC_ID, rsc_id);
 	crm_xml_add(data, F_LRMD_RSC_ACTION, action);
 	crm_xml_add_int(data, F_LRMD_RSC_INTERVAL, interval);

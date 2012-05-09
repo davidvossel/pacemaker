@@ -78,10 +78,10 @@ static struct {
 static char event_buf_v0[1024];
 
 #define report_event(event)	\
-	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s exec_id:%s rc:%d exec_rc:%d call_id:%d op_status:%d", \
+	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s action:%s rc:%d exec_rc:%d call_id:%d op_status:%d", \
 		event->type,	\
 		event->rsc_id,	\
-		event->exec_id,	\
+		event->action,	\
 		event->rc,	\
 		event->exec_rc,	\
 		event->call_id,	\
@@ -154,11 +154,7 @@ start_test(gpointer user_data)
 	}
 
 	if (safe_str_eq(options.api_call, "exec")) {
-		char buf[512];
-		snprintf(buf, 512, "%s_%s_%d",
-			options.rsc_id, options.action, options.interval);
 		rc = lrmd_conn->cmds->exec(lrmd_conn,
-			buf,
 			options.rsc_id,
 			options.action,
 			options.interval,

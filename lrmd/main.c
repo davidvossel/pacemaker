@@ -98,6 +98,7 @@ static int32_t
 lrmd_ipc_closed(qb_ipcs_connection_t *c)
 {
 	lrmd_client_t *client = (lrmd_client_t *) qb_ipcs_context_get(c);
+	int found = 0;
 
 	if (!client) {
 		crm_err("No client for ipc");
@@ -105,7 +106,11 @@ lrmd_ipc_closed(qb_ipcs_connection_t *c)
 	}
 
 	if (client->id) {
-		g_hash_table_remove(client_list, client->id);
+		found = g_hash_table_remove(client_list, client->id);
+	}
+
+	if (!found) {
+		crm_err("Asked to remove unknown client with id %d", client->id);
 	}
 
 	return 0;
