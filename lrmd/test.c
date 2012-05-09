@@ -78,14 +78,14 @@ static struct {
 static char event_buf_v0[1024];
 
 #define report_event(event)	\
-	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s action:%s rc:%d exec_rc:%d call_id:%d op_status:%d", \
+	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s action:%s rc:%d exec_rc:%s call_id:%d op_status:%s", \
 		event->type,	\
 		event->rsc_id,	\
-		event->action,	\
+		event->action ? event->action : "none",	\
 		event->rc,	\
-		event->exec_rc,	\
+		services_ocf_exitcode_str(event->exec_rc),	\
 		event->call_id,	\
-		event->lrmd_op_status);	\
+		services_lrm_status_str(event->lrmd_op_status));	\
 	crm_info("%s", event_buf_v0);;
 
 static void

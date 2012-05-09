@@ -256,6 +256,68 @@ services_action_async(svc_action_t *op, void (*action_callback)(svc_action_t *))
 gboolean
 services_action_cancel(const char *name, const char *action, int interval);
 
+static inline const char*
+services_lrm_status_str(enum op_status status)
+{
+    switch (status) {
+    case PCMK_LRM_OP_PENDING:
+        return "OP_PENDING";
+    case PCMK_LRM_OP_DONE:
+        return "OP_DONE";
+    case PCMK_LRM_OP_CANCELLED:
+        return "OP_CANCELLED";
+    case PCMK_LRM_OP_TIMEOUT:
+        return "OP_TIMEOUT";
+    case PCMK_LRM_OP_NOTSUPPORTED:
+        return "OP_NOTSUPPORTED";
+    case PCMK_LRM_OP_ERROR:
+        return "OP_ERROR";
+    default:
+        return "unknown";
+    }
+}
+
+static inline const char*
+services_ocf_exitcode_str(enum ocf_exitcode code)
+{
+    switch (code) {
+    case PCMK_OCF_OK:
+        return "OCF_OK";
+    case PCMK_OCF_UNKNOWN_ERROR:
+        return "OCF_UNKNOWN_ERROR";
+    case PCMK_OCF_INVALID_PARAM:
+        return "OCF_INVALID_PARAM";
+    case PCMK_OCF_UNIMPLEMENT_FEATURE:
+        return "OCF_UNIMPLEMENT_FEATURE";
+    case PCMK_OCF_INSUFFICIENT_PRIV:
+        return "OCF_INSUFFICIENT_PRIV";
+    case PCMK_OCF_NOT_INSTALLED:
+        return "OCF_NOT_INSTALLED";
+    case PCMK_OCF_NOT_CONFIGURED:
+        return "OCF_NOT_CONFIGURED";
+    case PCMK_OCF_NOT_RUNNING:
+        return "OCF_NOT_RUNNING";
+    case PCMK_OCF_RUNNING_MASTER:
+        return "OCF_RUNNING_MASTER";
+    case PCMK_OCF_FAILED_MASTER:
+        return "OCF_FAILED_MASTER";
+    case PCMK_OCF_SIGNAL:
+        return "OCF_SIGNAL";
+    case PCMK_OCF_NOT_SUPPORTED:
+        return "OCF_NOT_SUPPORTED";
+    case PCMK_OCF_PENDING:
+        return "OCF_PENDING";
+    case PCMK_OCF_CANCELLED:
+        return "OCF_CANCELLED";
+    case PCMK_OCF_TIMEOUT:
+        return "OCF_TIMEOUT";
+    case PCMK_OCF_OTHER_ERROR:
+        return "OCF_OTHER_ERROR";
+    default:
+	    return "unknown";
+    }
+}
+
 static inline enum ocf_exitcode
 services_get_ocf_exitcode(char *action, int lsb_exitcode)
 {
