@@ -38,7 +38,7 @@ class Test:
 		return self.result_exitcode
 
 	def print_result(self):
-		print self.result_txt
+		print "    %s" % self.result_txt
 
 	def run_cmd(self, args):
 		cmd = shlex.split(args)
@@ -49,16 +49,17 @@ class Test:
 
 	def run(self):
 		res = 0
+		print "\nBEGIN LRMD TEST %s " % self.name
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
 		lrmd = subprocess.Popen("./lrmd")
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != 0:
-				self.result_txt = "FAILURE - '%s' failed on command %s" % (self.name, cmd)
+				self.result_txt = "FAILURE - '%s' on cmd '%s'" % (self.name, cmd)
 				self.result_exitcode = res
 				break
-
+		print "RESULT: %s\nEND LRMD LRMD TEST %s \n" % (self.name, self.result_txt)
 		lrmd.kill()
 
 		return res
@@ -162,6 +163,8 @@ class Tests:
 	def print_results(self):
 		failures = 0;
 		success = 0;
+		print "\n\n======= FINAL RESULTS =========="
+		print "\n--- INDIVIDUAL TEST RESULTS:"
 		for test in self.tests:
 			test.print_result()
 			if test.get_exitcode() != 0:
@@ -169,7 +172,7 @@ class Tests:
 			else:
 				success = success + 1
 
-		print "RESULTS - Pass:%d  Fail:%d\n" % (success, failures)
+		print "\n--- TOTALS\n    Pass:%d\n    Fail:%d\n" % (success, failures)
 
 
 def main(argv):

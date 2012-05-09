@@ -197,7 +197,7 @@ start_test(gpointer user_data)
 		exit(-1);
 	}
 
-	if (options.action && rc == lrmd_ok) {
+	if (options.api_call && rc == lrmd_ok) {
 		crm_info("ACTION SUCCESSFUL");
 		if (!options.listen) {
 			exit(0);
