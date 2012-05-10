@@ -263,6 +263,9 @@ class Tests:
 		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.");
 		test.add_cmd("-c list_agents ");
 
+		### get providers  ###
+		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies at least one provider exists.");
+		test.add_cmd("-c list_providers ");
 
 	def run_tests(self):
 		for test in self.tests:

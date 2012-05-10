@@ -564,6 +564,35 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
 	return rc;
 }
 
+static int
+lrmd_api_list_providers(lrmd_t *lrmd, lrmd_list_t **providers)
+{
+	int rc = lrmd_ok;
+	GList *ocf_providers = NULL;
+	GList *lsb_providers = NULL;
+	GListPtr gIter = NULL;
+
+	ocf_providers = resources_list_providers("ocf");
+	lsb_providers = resources_list_providers("lsb");
+
+	for (gIter = ocf_providers; gIter != NULL; gIter = gIter->next) {
+		*providers = lrmd_list_add(*providers, (const char *) gIter->data);
+		crm_free(gIter->data);
+		rc++;
+	}
+
+	for (gIter = lsb_providers; gIter != NULL; gIter = gIter->next) {
+		*providers = lrmd_list_add(*providers, (const char *) gIter->data);
+		crm_free(gIter->data);
+		rc++;
+	}
+
+	g_list_free(ocf_providers);
+	g_list_free(lsb_providers);
+
+	return rc;
+}
+
 lrmd_t *
 lrmd_api_new(void)
 {
@@ -585,6 +614,7 @@ lrmd_api_new(void)
 	new_lrmd->cmds->exec = lrmd_api_exec;
 	new_lrmd->cmds->cancel = lrmd_api_cancel;
 	new_lrmd->cmds->list_agents = lrmd_api_list_agents;
+	new_lrmd->cmds->list_providers = lrmd_api_list_providers;
 
 	return new_lrmd;
 }

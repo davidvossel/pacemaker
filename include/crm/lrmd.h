@@ -248,6 +248,15 @@ typedef struct lrmd_api_operations_s
 	 */
 	int (*list_agents)(lrmd_t *lrmd, lrmd_list_t **agents);
 
+	/*!
+	 * \brief Retrieve a list of resource agent providers
+	 *
+	 * \note list must be freed using lrmd_list_freeall()
+	 *
+	 * \retval num items in list on success
+	 * \retval negative error code on failure
+	 */
+	int (*list_providers)(lrmd_t *lrmd, lrmd_list_t **providers);
 } lrmd_api_operations_t;
 
 struct lrmd_s {

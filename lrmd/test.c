@@ -229,7 +229,7 @@ start_test(gpointer user_data)
 		rc = lrmd_conn->cmds->list_agents(lrmd_conn, &list);
 
 		if (rc > 0) {
-			print_result(printf("%d agents found", rc));
+			print_result(printf("%d agents found\n", rc));
 			for (iter = list; iter != NULL; iter = iter->next) {
 				print_result(printf("%s\n", iter->val));
 			}
@@ -239,7 +239,22 @@ start_test(gpointer user_data)
 			print_result(printf("API_CALL FAILURE - no agents found"));
 			rc = -1;
 		}
+	} else if (safe_str_eq(options.api_call, "list_providers")) {
+		lrmd_list_t *list = NULL;
+		lrmd_list_t *iter = NULL;
+		rc = lrmd_conn->cmds->list_providers(lrmd_conn, &list);
 
+		if (rc > 0) {
+			print_result(printf("%d providers found\n", rc));
+			for (iter = list; iter != NULL; iter = iter->next) {
+				print_result(printf("%s\n", iter->val));
+			}
+			lrmd_list_freeall(list);
+			rc = 0;
+		} else {
+			print_result(printf("API_CALL FAILURE - no providers found"));
+			rc = -1;
+		}
 	} else if (options.action) {
 		print_result(printf("API-CALL FAILURE unknown action '%s'\n", options.action));
 		exit(-1);
