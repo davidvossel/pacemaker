@@ -36,9 +36,11 @@ class Test:
 		self.cmds.append([cmd, args, 0])
 
 	def add_cmd(self, args):
+		args += " -Q"
 		self.cmds.append([self.test_tool_location, args, 0])
 
 	def add_expected_fail_cmd(self, args):
+		args += " -Q"
 		self.cmds.append([self.test_tool_location, args, 255])
 
 	def get_exitcode(self):
@@ -58,18 +60,21 @@ class Test:
 	def run(self):
 		res = 0
 		i = 1
-		print "\nBEGIN LRMD TEST %s " % self.name
+		print "\n--- BEGIN LRMD TEST %s " % self.name
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
 		lrmd = subprocess.Popen("./lrmd")
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != cmd[2]:
+				print "Iteration %d FAILED - pid rc %d expected rc %d- cmd args '%s'" % (i, res, cmd[2], cmd[1])
 				self.result_txt = "FAILURE - '%s' failed on cmd iteration %d" % (self.name, i)
 				self.result_exitcode = res
 				break
+			else:
+				print "Iteration %d SUCCESS" % (i)
 			i = i + 1
-		print "END LRMD '%s' TEST - %s \n" % (self.name, self.result_txt)
+		print "--- END LRMD '%s' TEST - %s \n" % (self.name, self.result_txt)
 		lrmd.kill()
 
 		return res
@@ -239,8 +244,19 @@ class Tests:
 		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_DONE\" -t 1000")
 		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
 
-
-
+		### get metadata ###
+		test = self.new_test("get_metadata", "Retrieve metadata for a resource");
+		test.add_cmd("-c metadata "
+			"-C \"ocf\" "
+			"-P \"pacemaker\" "
+			"-T \"Dummy\"")
+		test.add_cmd("-c metadata "
+			"-C \"ocf\" "
+			"-P \"pacemaker\" "
+			"-T \"Stateful\"")
+		test.add_expected_fail_cmd("-c metadata "
+			"-P \"pacemaker\" "
+			"-T \"Stateful\"")
 
 	def run_tests(self):
 		for test in self.tests:

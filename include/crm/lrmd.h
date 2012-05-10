@@ -52,7 +52,7 @@ struct lrmd_key_value_t;
 #define LRMD_OP_RSC_EXEC          "lrmd_rsc_exec"
 #define LRMD_OP_RSC_CANCEL        "lrmd_rsc_cancel"
 #define LRMD_OP_RSC_UNREG         "lrmd_rsc_unregister"
-#define LRMD_OP_RSC_GET_METADATA  "lrmd_rsc_metadata"
+#define LRMD_OP_RSC_METADATA  "lrmd_rsc_metadata"
 
 
 #define T_LRMD           "lrmd"
@@ -88,6 +88,7 @@ enum lrmd_errors {
 	lrmd_err_authentication      = -14,
 	lrmd_err_signal              = -15,
 	lrmd_err_exec_failed         = -16,
+	lrmd_err_no_metadata         = -17,
 };
 
 enum lrmd_callback_event {
@@ -169,7 +170,14 @@ typedef struct lrmd_api_operations_s
 		void *userdata,
 		lrmd_event_callback callback);
 
-	/* TODO IMPLEMENT */
+	/*!
+	 * \brief Get the metadata documentation for a resource.
+	 *
+	 * \note Value is returned in output.  Output must be freed when set
+	 *
+	 * \retval lrmd_ok success
+	 * \retval negative error code or failure
+	 */
 	int (*get_metadata) (lrmd_t *lrmd,
 		const char *class,
 		const char *provider,

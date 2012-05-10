@@ -27,4 +27,5 @@ lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
 
 lrmd_test_SOURCES	= test.c
 lrmd_test_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
-			$(top_builddir)/lib/lrmd/liblrmd.la
+			$(top_builddir)/lib/lrmd/liblrmd.la  \
+			$(top_builddir)/lib/services/libpservice.la

@@ -34,6 +34,7 @@
 
 #include <crm/crm.h>
 #include <crm/lrmd.h>
+#include <crm/services.h>
 #include <crm/common/mainloop.h>
 #include <crm/msg_xml.h>
 
@@ -392,17 +393,44 @@ lrmd_api_set_callback(lrmd_t *lrmd, void *userdata, lrmd_event_callback callback
 }
 
 static int
-lrmd_api_get_metadata (lrmd_t *lrmd,
+lrmd_api_get_metadata(lrmd_t *lrmd,
 	const char *class,
 	const char *provider,
 	const char *type,
 	char **output,
 	enum lrmd_call_options options)
 {
-	int rc = lrmd_ok;
-	/* TODO implement */
+	svc_action_t *action = NULL;
 
-	return rc;
+	if (!class || !provider || !type) {
+		return lrmd_err_missing;
+	}
+
+	action = resources_action_create("get_meta",
+		class,
+		provider,
+		type,
+		"meta-data",
+		0,
+		1000,
+		NULL);
+
+	if (!(services_action_sync(action))) {
+		crm_err("Failed to retrieve meta-data for %s:%s:%s", class, provider, type);
+		services_action_free(action);
+		return lrmd_err_no_metadata;
+	}
+
+	if (!action->stdout_data) {
+		crm_err("Failed to retrieve meta-data for %s:%s:%s", class, provider, type);
+		services_action_free(action);
+		return lrmd_err_no_metadata;
+	}
+
+	*output = crm_strdup(action->stdout_data);
+	services_action_free(action);
+
+	return lrmd_ok;
 }
 
 static int
