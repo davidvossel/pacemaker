@@ -223,6 +223,23 @@ start_test(gpointer user_data)
 			print_result(printf("%s", output));
 			crm_free(output);
 		}
+	} else if (safe_str_eq(options.api_call, "list_agents")) {
+		lrmd_list_t *list = NULL;
+		lrmd_list_t *iter = NULL;
+		rc = lrmd_conn->cmds->list_agents(lrmd_conn, &list);
+
+		if (rc > 0) {
+			print_result(printf("%d agents found", rc));
+			for (iter = list; iter != NULL; iter = iter->next) {
+				print_result(printf("%s\n", iter->val));
+			}
+			lrmd_list_freeall(list);
+			rc = 0;
+		} else {
+			print_result(printf("API_CALL FAILURE - no agents found"));
+			rc = -1;
+		}
+
 	} else if (options.action) {
 		print_result(printf("API-CALL FAILURE unknown action '%s'\n", options.action));
 		exit(-1);

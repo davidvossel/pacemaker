@@ -58,8 +58,43 @@ typedef struct lrmd_private_s {
 
 } lrmd_private_t;
 
+static lrmd_list_t *
+lrmd_list_add(lrmd_list_t *head, const char *value)
+{
+	lrmd_list_t *p, *end;
+
+	crm_malloc0(p, sizeof(lrmd_list_t));
+	p->val = crm_strdup(value);
+
+	end = head;
+	while (end && end->next) {
+		end = end->next;
+	}
+
+	if (end) {
+		end->next = p;
+	} else {
+		head = p;
+	}
+
+	return head;
+}
+
+void
+lrmd_list_freeall(lrmd_list_t *head)
+{
+	lrmd_list_t *p;
+	while (head) {
+		char *val = (char *) head->val;
+		p = head->next;
+		crm_free(val);
+		crm_free(head);
+		head = p;
+	}
+}
+
 lrmd_key_value_t *
-lrmd_key_value_add(lrmd_key_value_t * head, const char *key, const char *value)
+lrmd_key_value_add(lrmd_key_value_t *head, const char *key, const char *value)
 {
 	lrmd_key_value_t *p, *end;
 
@@ -483,6 +518,52 @@ lrmd_api_cancel(lrmd_t *lrmd,
 	return rc;
 }
 
+static int
+lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
+{
+	int rc = lrmd_ok;
+	char *provider = NULL;
+	GList *ocf_providers = NULL;
+	GList *lsb_providers = NULL;
+	GList *agents = NULL;
+	GListPtr gIter = NULL;
+	GListPtr gIter2 = NULL;
+
+	ocf_providers = resources_list_providers("ocf");
+	lsb_providers = resources_list_providers("lsb");
+
+	for (gIter = ocf_providers; gIter != NULL; gIter = gIter->next) {
+		provider = gIter->data;
+
+		agents = resources_list_agents("ocf", provider);
+		for (gIter2 = agents; gIter2 != NULL; gIter2 = gIter2->next) {
+			*resources = lrmd_list_add(*resources, (const char *) gIter2->data);
+			crm_free(gIter2->data);
+			rc++;
+		}
+		g_list_free(agents);
+		crm_free(provider);
+	}
+
+	for (gIter = lsb_providers; gIter != NULL; gIter = gIter->next) {
+		provider = gIter->data;
+
+		agents = resources_list_agents("lsb", provider);
+		for (gIter2 = agents; gIter2 != NULL; gIter2 = gIter2->next) {
+			*resources = lrmd_list_add(*resources, (const char *) gIter2->data);
+			crm_free(gIter2->data);
+			rc++;
+		}
+		g_list_free(agents);
+		crm_free(provider);
+	}
+
+	g_list_free(ocf_providers);
+	g_list_free(lsb_providers);
+
+	return rc;
+}
+
 lrmd_t *
 lrmd_api_new(void)
 {
@@ -503,6 +584,7 @@ lrmd_api_new(void)
 	new_lrmd->cmds->get_metadata = lrmd_api_get_metadata;
 	new_lrmd->cmds->exec = lrmd_api_exec;
 	new_lrmd->cmds->cancel = lrmd_api_cancel;
+	new_lrmd->cmds->list_agents = lrmd_api_list_agents;
 
 	return new_lrmd;
 }

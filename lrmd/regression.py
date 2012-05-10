@@ -69,7 +69,7 @@ class Test:
 			if res != cmd[2]:
 				print "Iteration %d FAILED - pid rc %d expected rc %d- cmd args '%s'" % (i, res, cmd[2], cmd[1])
 				self.result_txt = "FAILURE - '%s' failed on cmd iteration %d" % (self.name, i)
-				self.result_exitcode = res
+				self.result_exitcode = -1
 				break
 			else:
 				print "Iteration %d SUCCESS" % (i)
@@ -257,6 +257,12 @@ class Tests:
 		test.add_expected_fail_cmd("-c metadata "
 			"-P \"pacemaker\" "
 			"-T \"Stateful\"")
+
+
+		### get agents ###
+		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.");
+		test.add_cmd("-c list_agents ");
+
 
 	def run_tests(self):
 		for test in self.tests:

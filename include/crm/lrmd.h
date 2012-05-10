@@ -54,7 +54,6 @@ struct lrmd_key_value_t;
 #define LRMD_OP_RSC_UNREG         "lrmd_rsc_unregister"
 #define LRMD_OP_RSC_METADATA  "lrmd_rsc_metadata"
 
-
 #define T_LRMD           "lrmd"
 #define T_LRMD_REPLY     "lrmd_reply"
 #define T_LRMD_NOTIFY    "lrmd_notify"
@@ -116,6 +115,13 @@ typedef struct lrmd_event_data_s {
 
 typedef void (*lrmd_event_callback)(lrmd_event_data_t *event, void *userdata);
 
+typedef struct lrmd_list_s {
+	const char *val;
+	struct lrmd_list_s *next;
+} lrmd_list_t;
+
+void lrmd_list_freeall(lrmd_list_t *head);
+
 typedef struct lrmd_api_operations_s
 {
 	/*!
@@ -124,7 +130,7 @@ typedef struct lrmd_api_operations_s
 	 * \note This must be done before executing any other API functions.
 	 *
 	 * \retval 0, success
-	 * \retval negative error code or failure
+	 * \retval negative error code on failure
 	 */
 	int (*connect) (lrmd_t *lrmd, const char *client_name, int *lrmd_fd);
 
@@ -132,7 +138,7 @@ typedef struct lrmd_api_operations_s
 	 * \brief Disconnect from the lrmd.
 	 *
 	 * \retval 0, success
-	 * \retval negative error code or failure
+	 * \retval negative error code on failure
 	 */
 	int (*disconnect)(lrmd_t *lrmd);
 
@@ -140,13 +146,13 @@ typedef struct lrmd_api_operations_s
 	 * \brief Register a resource with the lrmd.
 	 *
 	 * \retval 0, success
-	 * \retval negative error code or failure
+	 * \retval negative error code on failure
 	 */
 	int (*register_rsc) (lrmd_t *lrmd,
 		const char *rsc_id,
 		const char *class,
 		const char *provider,
-		const char *type,
+		const char *agent,
 		enum lrmd_call_options options);
 
 	/*!
@@ -156,7 +162,7 @@ typedef struct lrmd_api_operations_s
 	 *       automatically.
 	 *
 	 * \retval 0, success
-	 * \retval negative error code or failure
+	 * \retval negative error code on failure
 	 *
 	 */
 	int (*unregister_rsc) (lrmd_t *lrmd,
@@ -176,12 +182,12 @@ typedef struct lrmd_api_operations_s
 	 * \note Value is returned in output.  Output must be freed when set
 	 *
 	 * \retval lrmd_ok success
-	 * \retval negative error code or failure
+	 * \retval negative error code on failure
 	 */
 	int (*get_metadata) (lrmd_t *lrmd,
 		const char *class,
 		const char *provider,
-		const char *type,
+		const char *agent,
 		char **output,
 		enum lrmd_call_options options);
 
@@ -195,7 +201,7 @@ typedef struct lrmd_api_operations_s
 	 *       to occur in any specific order in relation to one another
 	 *       regardless of what order the client api is called in.
 	 * \retval call_id to track async event result on success
-	 * \retval negative error code or failure
+	 * \retval negative error code on failure
 	 */
 	int (*exec)(lrmd_t *lrmd,
 		const char *rsc_id,
@@ -225,12 +231,22 @@ typedef struct lrmd_api_operations_s
 	 *       the order the client api is called in.
 	 *
 	 * \retval 0, cancel command sent.
-	 * \retval negative error code or failure
+	 * \retval negative error code on failure
 	 */
 	int (*cancel)(lrmd_t *lrmd,
 		const char *rsc_id,
 		const char *action,
 		int interval);
+
+	/*!
+	 * \brief Retrieve a list of installed resource agents from all providers
+	 *
+	 * \note list must be freed using lrmd_list_freeall()
+	 *
+	 * \retval num items in list on success
+	 * \retval negative error code on failure
+	 */
+	int (*list_agents)(lrmd_t *lrmd, lrmd_list_t **agents);
 
 } lrmd_api_operations_t;
 
