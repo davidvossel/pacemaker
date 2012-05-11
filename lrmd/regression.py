@@ -32,16 +32,27 @@ class Test:
 		self.result_txt = ""
 		self.result_exitcode = 0;
 
+	def __new_cmd(self, cmd, args, exitcode, stdout_match):
+		self.cmds.append(
+			{
+				"cmd" : cmd,
+				"args" : args,
+				"expected_exitcode" : exitcode,
+				"stdout_match" : stdout_match
+			}
+		)
+
 	def add_sys_cmd(self, cmd, args):
-		self.cmds.append([cmd, args, 0])
+		self.__new_cmd(cmd, args, 0, "")
+
+	def add_cmd_check_stdout(self, args, stdout_match):
+		self.__new_cmd(self.test_tool_location, args, 0, stdout_match)
 
 	def add_cmd(self, args):
-		args += " -Q"
-		self.cmds.append([self.test_tool_location, args, 0])
+		self.__new_cmd(self.test_tool_location, args, 0, "")
 
 	def add_expected_fail_cmd(self, args):
-		args += " -Q"
-		self.cmds.append([self.test_tool_location, args, 255])
+		self.__new_cmd(self.test_tool_location, args, 255, "")
 
 	def get_exitcode(self):
 		return self.result_exitcode
@@ -51,10 +62,15 @@ class Test:
 
 	def run_cmd(self, args):
 
-		cmd = shlex.split(args[1])
-		cmd.insert(0, args[0])
-		test = subprocess.Popen(cmd)
+		cmd = shlex.split(args['args'])
+		cmd.insert(0, args['cmd'])
+		test = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 		test.wait()
+
+		if args['stdout_match'] != "" and test.communicate()[0].count(args['stdout_match']) == 0:
+			test.returncode = -2
+			print "STDOUT string '%s' was not found in cmd output" % (args['stdout_match'])
+
 		return test.returncode;
 
 	def run(self):
@@ -66,8 +82,8 @@ class Test:
 		lrmd = subprocess.Popen("./lrmd")
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
-			if res != cmd[2]:
-				print "Iteration %d FAILED - pid rc %d expected rc %d - cmd args '%s'" % (i, res, cmd[2], cmd[1])
+			if res != cmd['expected_exitcode']:
+				print "Iteration %d FAILED - pid rc %d expected rc %d - cmd args '%s'" % (i, res, cmd['expected_exitcode'], cmd['args'])
 				self.result_txt = "FAILURE - '%s' failed on cmd iteration %d" % (self.name, i)
 				self.result_exitcode = -1
 				break
@@ -256,11 +272,11 @@ class Tests:
 
 		### get agents ###
 		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.");
-		test.add_cmd("-c list_agents ");
+		test.add_cmd_check_stdout("-c list_agents ", "Dummy");
 
 		### get providers  ###
 		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies at least one provider exists.");
-		test.add_cmd("-c list_providers ");
+		test.add_cmd_check_stdout("-c list_providers ", "pacemaker");
 
 	def run_tests(self):
 		for test in self.tests:
