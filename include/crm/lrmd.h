@@ -88,6 +88,7 @@ enum lrmd_errors {
 	lrmd_err_signal              = -15,
 	lrmd_err_exec_failed         = -16,
 	lrmd_err_no_metadata         = -17,
+	lrmd_err_stonith_connection  = -18,
 };
 
 enum lrmd_callback_event {

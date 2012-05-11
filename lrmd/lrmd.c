@@ -28,6 +28,7 @@
 #include <crm/common/ipc.h>
 
 #include <lrmd_private.h>
+#include <crm/stonith-ng.h>
 
 GHashTable *rsc_list = NULL;
 GHashTable *client_list = NULL;
@@ -259,6 +260,84 @@ action_complete(svc_action_t *action)
 	cmd_finalize(cmd, rsc);
 }
 
+static int
+lrmd_rsc_execute_stonith(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
+{
+	int rc = 0;
+	stonith_t *stonith_api = stonith_api_new();
+	rc = stonith_api->cmds->connect(stonith_api, "lrmd", NULL);
+
+	if (rc) {
+		crm_err("Unable to connect to stonith daemon to execute command. error: %d", rc);
+		cmd->exec_rc = rc;
+		cmd->rc = lrmd_err_stonith_connection;
+		cmd->lrmd_op_status = PCMK_LRM_OP_ERROR;
+		stonith_api_delete(stonith_api);
+		return lrmd_err_stonith_connection;
+	}
+
+	if (safe_str_eq(cmd->action, "start")) {
+		char *key = NULL;
+		char *value = NULL;
+		stonith_key_value_t *device_params = NULL;
+		GHashTableIter iter;
+
+		g_hash_table_iter_init(&iter, cmd->params);
+		while (g_hash_table_iter_next(&iter, (gpointer *) & key, (gpointer *) & value)) {
+			device_params = stonith_key_value_add(device_params, key, value);
+		}
+
+		rc = stonith_api->cmds->register_device(stonith_api,
+				st_opt_sync_call,
+				cmd->rsc_id,
+				rsc->provider,
+				rsc->type,
+				device_params);
+
+		stonith_key_value_freeall(device_params, 1, 1);
+		if (rc == 0) {
+			rc = stonith_api->cmds->call(stonith_api,
+				st_opt_sync_call,
+				cmd->rsc_id,
+				"monitor",
+				NULL,
+				cmd->timeout);
+		}
+	} else if (safe_str_eq(cmd->action, "stop")) {
+		rc = stonith_api->cmds->remove_device(stonith_api, st_opt_sync_call, cmd->rsc_id);
+	} else if (safe_str_eq(cmd->action, "monitor")) {
+		rc = stonith_api->cmds->call(stonith_api,
+			st_opt_sync_call,
+			cmd->rsc_id,
+			cmd->action,
+			NULL,
+			cmd->timeout);
+	}
+
+	if (rc) {
+		/* translate the errors we can */
+		cmd->exec_rc = rc;
+		switch (rc) {
+		case st_err_not_supported:
+			cmd->lrmd_op_status = PCMK_LRM_OP_NOTSUPPORTED;
+			break;
+		case st_err_timeout:
+			cmd->lrmd_op_status = PCMK_LRM_OP_TIMEOUT;
+			break;
+		default:
+			cmd->lrmd_op_status = PCMK_LRM_OP_ERROR;
+		}
+	} else {
+		cmd->rc = cmd->exec_rc = lrmd_ok;
+		cmd->lrmd_op_status = PCMK_LRM_OP_DONE;
+	}
+
+	stonith_api->cmds->disconnect(stonith_api);
+	stonith_api_delete(stonith_api);
+
+	return rc;
+}
+
 static gboolean
 lrmd_rsc_execute(lrmd_rsc_t *rsc)
 {
@@ -286,6 +365,11 @@ lrmd_rsc_execute(lrmd_rsc_t *rsc)
 	if (!cmd) {
 		crm_trace("Nothing further to do for %s", rsc->rsc_id);
 		return TRUE;
+	}
+
+	if (safe_str_eq(rsc->class, "stonith")) {
+		lrmd_rsc_execute_stonith(rsc, cmd);
+		goto exec_done;
 	}
 
 	crm_trace("Creating action, resource:%s action:%s class:%s provider:%s agent:%s",
@@ -351,9 +435,9 @@ free_rsc(gpointer data)
 		/* command was never executed */
 		cmd->lrmd_op_status = PCMK_LRM_OP_CANCELLED;
 		cmd_finalize(cmd, NULL);
-    }
+	}
 	/* frees list, but not list elements. */
-    g_list_free(rsc->pending_ops);
+	g_list_free(rsc->pending_ops);
 
 	for (gIter = rsc->recurring_ops; gIter != NULL; gIter = gIter->next) {
 		lrmd_cmd_t *cmd = gIter->data;
@@ -362,9 +446,9 @@ free_rsc(gpointer data)
 		 * when it is cancelled. The rsc can be safely destroyed
 		 * even if we are waiting for the cancel result */
 		services_action_cancel(rsc->rsc_id, cmd->action, cmd->interval);
-    }
+	}
 	/* frees list, but not list elements. */
-    g_list_free(rsc->recurring_ops);
+	g_list_free(rsc->recurring_ops);
 
 	crm_free(rsc->rsc_id);
 	crm_free(rsc->class);
