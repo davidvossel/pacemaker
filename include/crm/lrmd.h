@@ -251,12 +251,16 @@ typedef struct lrmd_api_operations_s
 	/*!
 	 * \brief Retrieve a list of resource agent providers
 	 *
-	 * \note list must be freed using lrmd_list_freeall()
+	 * \note When the agent is provided, only the agent's provider will be returned
+	 * \note When no agent is supplied, all providers will be returned.
+	 * \note List must be freed using lrmd_list_freeall()
 	 *
 	 * \retval num items in list on success
 	 * \retval negative error code on failure
 	 */
-	int (*list_providers)(lrmd_t *lrmd, lrmd_list_t **providers);
+	int (*list_providers)(lrmd_t *lrmd,
+		const char *agent,
+		lrmd_list_t **providers);
 } lrmd_api_operations_t;
 
 struct lrmd_s {

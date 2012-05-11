@@ -38,6 +38,8 @@
 #include <crm/common/mainloop.h>
 #include <crm/msg_xml.h>
 
+#include <crm/stonith-ng.h>
+
 CRM_TRACE_INIT_DATA(lrmd);
 
 typedef struct lrmd_key_value_s {
@@ -538,11 +540,9 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
 		agents = resources_list_agents("ocf", provider);
 		for (gIter2 = agents; gIter2 != NULL; gIter2 = gIter2->next) {
 			*resources = lrmd_list_add(*resources, (const char *) gIter2->data);
-			crm_free(gIter2->data);
 			rc++;
 		}
-		g_list_free(agents);
-		crm_free(provider);
+		g_list_free_full(agents, free);
 	}
 
 	for (gIter = lsb_providers; gIter != NULL; gIter = gIter->next) {
@@ -551,23 +551,39 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
 		agents = resources_list_agents("lsb", provider);
 		for (gIter2 = agents; gIter2 != NULL; gIter2 = gIter2->next) {
 			*resources = lrmd_list_add(*resources, (const char *) gIter2->data);
-			crm_free(gIter2->data);
 			rc++;
 		}
-		g_list_free(agents);
-		crm_free(provider);
+		g_list_free_full(agents, free);
 	}
 
-	g_list_free(ocf_providers);
-	g_list_free(lsb_providers);
+	g_list_free_full(ocf_providers, free);
+	g_list_free_full(lsb_providers, free);
 
 	return rc;
 }
 
 static int
-lrmd_api_list_providers(lrmd_t *lrmd, lrmd_list_t **providers)
+does_provider_have_agent(const char *agent, const char *provider, const char *class)
+{
+	int found = 0;
+	GList *agents = NULL;
+	GListPtr gIter2 = NULL;
+	agents = resources_list_agents(class, provider);
+	for (gIter2 = agents; gIter2 != NULL; gIter2 = gIter2->next) {
+		if (safe_str_eq(agent, gIter2->data)) {
+			found = 1;
+		}
+	}
+	g_list_free_full(agents, free);
+
+	return found;
+}
+
+static int
+lrmd_api_list_providers(lrmd_t *lrmd, const char *agent, lrmd_list_t **providers)
 {
 	int rc = lrmd_ok;
+	char *provider = NULL;
 	GList *ocf_providers = NULL;
 	GList *lsb_providers = NULL;
 	GListPtr gIter = NULL;
@@ -576,19 +592,23 @@ lrmd_api_list_providers(lrmd_t *lrmd, lrmd_list_t **providers)
 	lsb_providers = resources_list_providers("lsb");
 
 	for (gIter = ocf_providers; gIter != NULL; gIter = gIter->next) {
-		*providers = lrmd_list_add(*providers, (const char *) gIter->data);
-		crm_free(gIter->data);
-		rc++;
+		provider = gIter->data;
+		if (!agent || does_provider_have_agent(agent, provider, "ocf")) {
+			*providers = lrmd_list_add(*providers, (const char *) gIter->data);
+			rc++;
+		}
 	}
 
 	for (gIter = lsb_providers; gIter != NULL; gIter = gIter->next) {
-		*providers = lrmd_list_add(*providers, (const char *) gIter->data);
-		crm_free(gIter->data);
-		rc++;
+		provider = gIter->data;
+		if (!agent || does_provider_have_agent(agent, provider, "lsb")) {
+			*providers = lrmd_list_add(*providers, (const char *) gIter->data);
+			rc++;
+		}
 	}
 
-	g_list_free(ocf_providers);
-	g_list_free(lsb_providers);
+	g_list_free_full(ocf_providers, free);
+	g_list_free_full(lsb_providers, free);
 
 	return rc;
 }

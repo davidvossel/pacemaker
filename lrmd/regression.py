@@ -278,8 +278,9 @@ class Tests:
 		test.add_cmd_check_stdout("-c list_agents ", "Dummy");
 
 		### get providers  ###
-		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies at least one provider exists.");
+		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.");
 		test.add_cmd_check_stdout("-c list_providers ", "pacemaker");
+		test.add_cmd_check_stdout("-c list_providers -T ping", "pacemaker");
 
 
 	def print_list(self):
