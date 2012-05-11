@@ -36,7 +36,8 @@ static gboolean lrmd_rsc_dispatch(gpointer user_data);
 typedef struct lrmd_cmd_s {
 	int timeout;
 	int interval;
-	int start_delay; /* TODO implement this */
+	int start_delay;
+	int delay_id;
 	int call_id;
 	int rc;
 	int exec_rc;
@@ -91,6 +92,9 @@ create_lrmd_cmd(xmlNode *msg)
 static void
 free_lrmd_cmd(lrmd_cmd_t *cmd)
 {
+	if (cmd->delay_id) {
+		g_source_remove(cmd->delay_id);
+	}
 	if (cmd->params) {
 		g_hash_table_destroy(cmd->params);
 	}
@@ -98,6 +102,22 @@ free_lrmd_cmd(lrmd_cmd_t *cmd)
 	crm_free(cmd->action);
 	crm_free(cmd->rsc_id);
 	crm_free(cmd);
+}
+
+static gboolean
+start_delay_helper(gpointer data)
+{
+	lrmd_cmd_t *cmd = data;
+	lrmd_rsc_t *rsc = NULL;
+
+	cmd->delay_id = 0;
+	rsc = cmd->rsc_id ? g_hash_table_lookup(rsc_list, cmd->rsc_id) : NULL;
+
+	if (rsc) {
+		mainloop_set_trigger(rsc->work);
+	}
+
+	return FALSE;
 }
 
 static void
@@ -109,6 +129,10 @@ schedule_lrmd_cmd(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 	crm_trace("Scheduling %s on %s", cmd->action, rsc->rsc_id);
 	rsc->pending_ops = g_list_append(rsc->pending_ops, cmd);
 	mainloop_set_trigger(rsc->work);
+
+	if (cmd->start_delay) {
+		cmd->delay_id = g_timeout_add(cmd->start_delay, start_delay_helper, cmd);
+	}
 }
 
 static void
@@ -249,8 +273,13 @@ lrmd_rsc_execute(lrmd_rsc_t *rsc)
 
 	if (rsc->pending_ops) {
 		GList *first = rsc->pending_ops;
-		rsc->pending_ops = g_list_remove_link(rsc->pending_ops, first);
 		cmd = first->data;
+		if (cmd->delay_id) {
+			crm_trace("Command %s %s was asked to run too early, waiting for start_delay timeout of %dms",
+				cmd->rsc_id, cmd->action, cmd->start_delay);
+			return TRUE;
+		}
+		rsc->pending_ops = g_list_remove_link(rsc->pending_ops, first);
 		g_list_free_1(first);
 	}
 

@@ -39,6 +39,7 @@ static struct crm_option long_options[] = {
 	{"listen",           1, 0, 'l', "\tListen for a specific event string"},
 	{"event-ver",        1, 0, 'e', "\tVersion of event to listen to"},
 	{"api-call",         1, 0, 'c', "\tDirectly relates to lrmd api functions"},
+	{"no-wait",          0, 0, 'w', "\tMake api call and do not wait for result."},
 	{"-spacer-",         1, 0, '-', "\nParameters for api-call option"},
 	{"action",           1, 0, 'a'},
 	{"rsc-id",           1, 0, 'r'},
@@ -68,6 +69,7 @@ static struct {
 	int start_delay;
 	int cancel_call_id;
 	int event_version;
+	int no_wait;
 	const char *api_call;
 	const char *rsc_id;
 	const char *provider;
@@ -272,6 +274,11 @@ start_test(gpointer user_data)
 		}
 	}
 
+	if (options.no_wait) {
+		/* just make the call and exit regardless of anything else. */
+		exit(0);
+	}
+
 	return 0;
 }
 
@@ -308,6 +315,9 @@ int main(int argc, char ** argv)
 			break;
 		case 'l':
 			options.listen = optarg;
+			break;
+		case 'w':
+			options.no_wait = 1;
 			break;
 		case 'c':
 			options.api_call = optarg;

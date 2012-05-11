@@ -67,7 +67,7 @@ class Test:
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != cmd[2]:
-				print "Iteration %d FAILED - pid rc %d expected rc %d- cmd args '%s'" % (i, res, cmd[2], cmd[1])
+				print "Iteration %d FAILED - pid rc %d expected rc %d - cmd args '%s'" % (i, res, cmd[2], cmd[1])
 				self.result_txt = "FAILURE - '%s' failed on cmd iteration %d" % (self.name, i)
 				self.result_exitcode = -1
 				break
@@ -100,16 +100,11 @@ class Tests:
 			"-T \"Dummy\" "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
-		test.add_cmd("-c unregister_rsc "
-			"-r \"test_rsc\" "
-			"-C \"ocf\" "
-			"-P \"pacemaker\" "
-			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
-			"-t 1000")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### start/stop test ###
-		test = self.new_test("start/stop", "Register a test, the start and stop it");
+		test = self.new_test("start/stop", "Register a test, then start and stop it");
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -127,13 +122,22 @@ class Tests:
 			"-a \"stop\" "
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
-		test.add_cmd("-c unregister_rsc "
-			"-r \"test_rsc\" "
-			"-C \"ocf\" "
-			"-P \"pacemaker\" "
-			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
-			"-t 1000")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+
+		### start delay /stop test ###
+		test = self.new_test("start_delay/stop", "Register a test, then start with start_delay value, and stop it");
+		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-c exec -r test_rsc -s 5000 -a start -w -t 1000")
+		test.add_expected_fail_cmd("-l "
+			"\"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-l "
+			"\"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 8000")
+		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor test ###
 		test = self.new_test("monitor_test", "Register a test, the start, monitor a few times, then stop");
@@ -160,13 +164,8 @@ class Tests:
 			"-a \"stop\" "
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
-		test.add_cmd("-c unregister_rsc "
-			"-r \"test_rsc\" "
-			"-C \"ocf\" "
-			"-P \"pacemaker\" "
-			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
-			"-t 1000")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor and cancel test ###
 		test = self.new_test("monitor_and_cancel_test", "Register a test, the start, monitor a few times, then cancel the monitor");
@@ -203,13 +202,8 @@ class Tests:
 			"-a \"stop\" "
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
-		test.add_cmd("-c unregister_rsc "
-			"-r \"test_rsc\" "
-			"-C \"ocf\" "
-			"-P \"pacemaker\" "
-			"-T \"Dummy\" "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
-			"-t 1000")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor fail ###
 		test = self.new_test("monitor_fail_test", "Register a test, the start, monitor a few times, then make the monitor fail.");
@@ -243,6 +237,8 @@ class Tests:
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_CANCELLED\" ")
 		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_DONE\" -t 1000")
 		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### get metadata ###
 		test = self.new_test("get_metadata", "Retrieve metadata for a resource");
@@ -257,7 +253,6 @@ class Tests:
 		test.add_expected_fail_cmd("-c metadata "
 			"-P \"pacemaker\" "
 			"-T \"Stateful\"")
-
 
 		### get agents ###
 		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.");
