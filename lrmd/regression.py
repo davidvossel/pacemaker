@@ -32,6 +32,8 @@ class Test:
 		self.result_txt = ""
 		self.result_exitcode = 0;
 
+		self.executed = 0
+
 	def __new_cmd(self, cmd, args, exitcode, stdout_match):
 		self.cmds.append(
 			{
@@ -93,6 +95,7 @@ class Test:
 		print "--- END LRMD '%s' TEST - %s \n" % (self.name, self.result_txt)
 		lrmd.kill()
 
+		self.executed = 1
 		return res
 
 class Tests:
@@ -120,7 +123,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### start/stop test ###
-		test = self.new_test("start/stop", "Register a test, then start and stop it");
+		test = self.new_test("start_stop", "Register a test, then start and stop it");
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -142,7 +145,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### start delay /stop test ###
-		test = self.new_test("start_delay/stop", "Register a test, then start with start_delay value, and stop it");
+		test = self.new_test("start_delay_stop", "Register a test, then start with start_delay value, and stop it");
 		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
 		test.add_cmd("-c exec -r test_rsc -s 5000 -a start -w -t 1000")
@@ -278,6 +281,19 @@ class Tests:
 		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies at least one provider exists.");
 		test.add_cmd_check_stdout("-c list_providers ", "pacemaker");
 
+
+	def print_list(self):
+		print "\n==== %d TESTS FOUND ====" % (len(self.tests))
+		for test in self.tests:
+			print "%s             - %s" % (test.name, test.description)
+		print "==== END OF LIST ====\n"
+
+	def run_single(self, name):
+		for test in self.tests:
+			if test.name == name:
+				test.run()
+				break;
+
 	def run_tests(self):
 		for test in self.tests:
 			test.run()
@@ -288,6 +304,9 @@ class Tests:
 		print "\n\n======= FINAL RESULTS =========="
 		print "\n--- INDIVIDUAL TEST RESULTS:"
 		for test in self.tests:
+			if test.executed == 0:
+				continue
+
 			test.print_result()
 			if test.get_exitcode() != 0:
 				failures = failures + 1
@@ -296,14 +315,58 @@ class Tests:
 
 		print "\n--- TOTALS\n    Pass:%d\n    Fail:%d\n" % (success, failures)
 
+class TestOptions:
+	def __init__(self):
+		self.options = {}
+		self.options['list-tests'] = 0
+		self.options['run-all'] = 1
+		self.options['run-only'] = ""
+		self.options['invalid-arg'] = ""
+		self.options['show-usage'] = 0
+
+	def build_options(self, argv):
+		args = argv[1:]
+		skip = 0
+		for i in range(0, len(args)):
+			if skip:
+				skip = 0
+				continue
+			elif args[i] == "-h" or args[i] == "--help":
+				self.options['show-usage'] = 1
+			elif args[i] == "-l" or args[i] == "--list-tests":
+				self.options['list-tests'] = 1
+			elif args[i] == "-r" or args[i] == "--run-only":
+				self.options['run-only'] = args[i+1]
+				skip = 1
+
+	def show_usage(self):
+		print "usage: " + sys.argv[0] + " [options]"
+		print "If no options are provided, all tests will run"
+		print "Options:"
+		print "\t [--help | -h]                     Show usage"
+		print "\t [--list-tests | -l]               Print out all registered tests."
+		print "\t [--run-only | -r 'testname']      Run a specific test"
+		print "\n\tExample: "
+		print "\t\t python ./regression.py --run-only start_stop"
+
 
 def main(argv):
-	print "Start testing!\n"
+	o = TestOptions()
+	o.build_options(argv)
 
 	tests = Tests("./lrmd", "./lrmd_test");
 	tests.build_tests()
-	tests.run_tests()
-	tests.print_results()
+
+	if o.options['list-tests']:
+		tests.print_list()
+	elif o.options['show-usage']:
+		o.show_usage()
+	elif o.options['run-only'] != "":
+		tests.run_single(o.options['run-only'])
+		tests.print_results()
+	else:
+		tests.run_tests()
+		tests.print_results()
 
 if __name__=="__main__":
 	main(sys.argv)
