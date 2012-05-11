@@ -531,8 +531,16 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
 	GListPtr gIter = NULL;
 	GListPtr gIter2 = NULL;
 
+    stonith_t *stonith_api = NULL;
+    stonith_key_value_t *stonith_resources = NULL;
+    stonith_key_value_t *dIter = NULL;
+
 	ocf_providers = resources_list_providers("ocf");
 	lsb_providers = resources_list_providers("lsb");
+
+    stonith_api = stonith_api_new();
+    stonith_api->cmds->list(stonith_api, st_opt_sync_call, NULL, &stonith_resources, 0);
+    stonith_api_delete(stonith_api);
 
 	for (gIter = ocf_providers; gIter != NULL; gIter = gIter->next) {
 		provider = gIter->data;
@@ -556,6 +564,11 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
 		g_list_free_full(agents, free);
 	}
 
+    for (dIter = stonith_resources; dIter; dIter = dIter->next) {
+		*resources = lrmd_list_add(*resources, dIter->value);
+    }
+
+    stonith_key_value_freeall(stonith_resources, 1, 0);
 	g_list_free_full(ocf_providers, free);
 	g_list_free_full(lsb_providers, free);
 

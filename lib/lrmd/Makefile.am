@@ -27,7 +27,8 @@ lib_LTLIBRARIES = liblrmd.la
 liblrmd_la_SOURCES = lrmd_client.c
 liblrmd_la_LDFLAGS = -version-info 1:0:0
 liblrmd_la_LIBADD = $(top_builddir)/lib/common/libcrmcommon.la	\
-			$(top_builddir)/lib/services/libpservice.la
+			$(top_builddir)/lib/services/libpservice.la \
+			$(top_builddir)/lib/fencing/libstonithd.la
 
 
 AM_CFLAGS = $(INCLUDES)

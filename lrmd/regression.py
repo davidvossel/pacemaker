@@ -148,11 +148,11 @@ class Tests:
 		test = self.new_test("start_delay_stop", "Register a test, then start with start_delay value, and stop it");
 		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
-		test.add_cmd("-c exec -r test_rsc -s 5000 -a start -w -t 1000")
+		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
 		test.add_expected_fail_cmd("-l "
 			"\"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
 		test.add_cmd("-l "
-			"\"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 8000")
+			"\"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 3000")
 		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
@@ -277,11 +277,14 @@ class Tests:
 		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.");
 		test.add_cmd_check_stdout("-c list_agents ", "Dummy");
 
+		### get stonith agents  ###
+		test = self.new_test("check_stonith_agents", "Retrieve list of available resource agents, verifies fence_pcmk exists");
+		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk");
+
 		### get providers  ###
 		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.");
 		test.add_cmd_check_stdout("-c list_providers ", "pacemaker");
 		test.add_cmd_check_stdout("-c list_providers -T ping", "pacemaker");
-
 
 	def print_list(self):
 		print "\n==== %d TESTS FOUND ====" % (len(self.tests))
