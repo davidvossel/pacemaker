@@ -261,10 +261,10 @@ class Tests:
 
 		### get metadata ###
 		test = self.new_test("get_metadata", "Retrieve metadata for a resource");
-		test.add_cmd("-c metadata "
+		test.add_cmd_check_stdout("-c metadata "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
-			"-T \"Dummy\"")
+			"-T \"Dummy\"" ,"resource-agent name=\"Dummy\"")
 		test.add_cmd("-c metadata "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
@@ -272,6 +272,17 @@ class Tests:
 		test.add_expected_fail_cmd("-c metadata "
 			"-P \"pacemaker\" "
 			"-T \"Stateful\"")
+		test.add_expected_fail_cmd("-c metadata "
+			"-C \"ocf\" "
+			"-P \"pacemaker\" "
+			"-T \"fake_agent\"")
+
+		### get stonith metadata ###
+		test = self.new_test("get_stonith_metadata", "Retrieve stonith metadata for a resource");
+		test.add_cmd_check_stdout("-c metadata "
+			"-C \"stonith\" "
+			"-P \"pacemaker\" "
+			"-T \"fence_pcmk\"", "resource-agent name=\"fence_pcmk\"")
 
 		### get agents ###
 		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.");

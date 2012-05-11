@@ -443,6 +443,18 @@ lrmd_api_get_metadata(lrmd_t *lrmd,
 		return lrmd_err_missing;
 	}
 
+	if (safe_str_eq(class, "stonith")) {
+		int rc = lrmd_ok;
+		stonith_t *stonith_api = stonith_api_new();
+
+		stonith_api->cmds->metadata(stonith_api, st_opt_sync_call, type, provider, output, 0);
+		stonith_api_delete(stonith_api);
+		if (*output == NULL) {
+			rc = lrmd_err_no_metadata;
+		}
+		return rc;
+	}
+
 	action = resources_action_create("get_meta",
 		class,
 		provider,
