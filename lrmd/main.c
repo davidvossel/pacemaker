@@ -141,12 +141,46 @@ static struct qb_ipcs_service_handlers lrmd_ipc_callbacks =
 	.connection_destroyed = lrmd_ipc_destroy
 };
 
-static void
+void
 lrmd_shutdown(int nsig)
 {
 	crm_info("Terminating with  %d clients", g_hash_table_size(client_list));
-	mainloop_del_ipc_server(ipcs);
+	if (ipcs) {
+		mainloop_del_ipc_server(ipcs);
+	}
 	exit(0);
+}
+
+static int
+try_server_create(void)
+{
+	int tries = 10;
+
+	/*
+	 * This should complete on the first iteration. The only
+	 * known reason for why this would fail is if another lrmd process
+	 * already exists on the system.  To avoid this situation
+	 * we attempt to connect to the old lrmd process and shut it down
+	 * using the client library.
+	 */
+	do {
+		ipcs = mainloop_add_ipc_server(CRM_SYSTEM_LRMD, QB_IPC_SHM, &lrmd_ipc_callbacks);
+
+		if (ipcs == NULL) {
+			lrmd_t *lrmd_conn = lrmd_api_new();
+
+			if (!(lrmd_conn->cmds->connect(lrmd_conn, "lrmd_shutdown", NULL))) {
+				lrmd_conn->cmds->shutdown(lrmd_conn);
+				lrmd_conn->cmds->disconnect(lrmd_conn);
+				crm_err("New IPC server could not be created because another lrmd process exists, sending shutdown command to old lrmd process.");
+			}
+			lrmd_api_delete(lrmd_conn);
+		}
+
+		tries --;
+	} while (!ipcs && tries);
+
+	return ipcs ? 0 : -1;
 }
 
 int
@@ -158,12 +192,11 @@ main(int argc, char ** argv)
 
     rsc_list = g_hash_table_new_full(crm_str_hash, g_str_equal, NULL, free_rsc);
 	client_list = g_hash_table_new(crm_str_hash, g_str_equal);
-	ipcs = mainloop_add_ipc_server(CRM_SYSTEM_LRMD, QB_IPC_SHM, &lrmd_ipc_callbacks);
-
-	if (ipcs == NULL) {
-		crm_err("Failed to start IPC server");
-		return -1;
+	if (try_server_create()) {
+		crm_err("Failed to allocate lrmd server.  shutting down");
+		exit(-1);
 	}
+
 
 	mainloop_track_children(G_PRIORITY_HIGH);
 	mainloop_add_signal(SIGTERM, lrmd_shutdown);

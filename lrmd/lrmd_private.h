@@ -54,4 +54,6 @@ void process_lrmd_message(lrmd_client_t *client, xmlNode *request);
 
 void free_rsc(gpointer data);
 
+void lrmd_shutdown(int nsig);
+
 #endif

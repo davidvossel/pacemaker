@@ -262,6 +262,11 @@ typedef struct lrmd_api_operations_s
 	int (*list_providers)(lrmd_t *lrmd,
 		const char *agent,
 		lrmd_list_t **providers);
+
+	/*!
+	 * \brief  Shutdown the lrmd process remotely
+	 */
+	int (*shutdown) (lrmd_t *lrmd);
 } lrmd_api_operations_t;
 
 struct lrmd_s {

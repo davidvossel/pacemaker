@@ -24,6 +24,7 @@ noinst_PROGRAMS = lrmd_test
 lrmd_SOURCES	= main.c lrmd.c
 lrmd_LDADD		= $(top_builddir)/lib/common/libcrmcommon.la	\
 			$(top_builddir)/lib/services/libpservice.la \
+			$(top_builddir)/lib/lrmd/liblrmd.la  \
 			$(top_builddir)/lib/fencing/libstonithd.la
 
 lrmd_test_SOURCES	= test.c

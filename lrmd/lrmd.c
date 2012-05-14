@@ -557,6 +557,7 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 	const char *op = crm_element_value(request, F_LRMD_OPERATION);
 	int do_reply = 0;
 	int do_notify = 0;
+	int exit = 0;
 
 	crm_element_value_int(request, F_LRMD_CALLOPTS, &call_options);
 	crm_element_value_int(request, F_LRMD_CALLID, &call_id);
@@ -577,6 +578,9 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 	} else if (crm_str_eq(op, LRMD_OP_RSC_CANCEL, TRUE)) {
 		rc = process_lrmd_rsc_cancel(client, request);
 		do_reply = 1;
+	} else if (crm_str_eq(op, CRM_OP_QUIT, TRUE)) {
+		do_reply = 1;
+		exit = 1;
 	} else {
 		rc = lrmd_err_unknown_operation;
 		do_reply = 1;
@@ -590,6 +594,10 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 
 	if (do_notify) {
 		send_generic_notify(rc, request);
+	}
+
+	if (exit) {
+		lrmd_shutdown(0);
 	}
 }
 

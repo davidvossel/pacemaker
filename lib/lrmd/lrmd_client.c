@@ -638,6 +638,18 @@ lrmd_api_list_providers(lrmd_t *lrmd, const char *agent, lrmd_list_t **providers
 	return rc;
 }
 
+static int
+lrmd_api_shutdown(lrmd_t *lrmd)
+{
+	int rc = lrmd_ok;
+	xmlNode *data = create_xml_node(NULL, F_LRMD_RSC);
+
+	rc = lrmd_send_command(lrmd, CRM_OP_QUIT, data, NULL, 0, 0);
+	free_xml(data);
+
+	return rc;
+}
+
 lrmd_t *
 lrmd_api_new(void)
 {
@@ -660,6 +672,7 @@ lrmd_api_new(void)
 	new_lrmd->cmds->cancel = lrmd_api_cancel;
 	new_lrmd->cmds->list_agents = lrmd_api_list_agents;
 	new_lrmd->cmds->list_providers = lrmd_api_list_providers;
+	new_lrmd->cmds->shutdown = lrmd_api_shutdown;
 
 	return new_lrmd;
 }
