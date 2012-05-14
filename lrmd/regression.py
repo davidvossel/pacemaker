@@ -81,7 +81,7 @@ class Test:
 		print "\n--- BEGIN LRMD TEST %s " % self.name
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
-		lrmd = subprocess.Popen("./lrmd")
+		lrmd = subprocess.Popen(self.daemon_location)
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != cmd['expected_exitcode']:
@@ -142,6 +142,23 @@ class Tests:
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
 			"-t 1000")
 		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+
+		### start timeout test  ###
+		test = self.new_test("start_timeout", "Register a test, then start with a 1ms timeout period.");
+		test.add_cmd("-c register_rsc "
+			"-r \"test_rsc\" "
+			"-C \"ocf\" "
+			"-P \"pacemaker\" "
+			"-T \"Dummy\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
+			"-t 1000")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -k \"op_sleep\" -v \"3\" -t 1000 -w")
+		test.add_cmd("-l "
+			"\"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_TIMEOUT op_status:OP_TIMEOUT\" -t 3000")
+		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### start delay /stop test ###
@@ -366,10 +383,13 @@ class TestOptions:
 
 
 def main(argv):
+	lrmd_loc = argv[0].replace("regression.py", "lrmd")
+	test_loc = argv[0].replace("regression.py", "lrmd_test")
+
 	o = TestOptions()
 	o.build_options(argv)
 
-	tests = Tests("./lrmd", "./lrmd_test");
+	tests = Tests(lrmd_loc, test_loc);
 	tests.build_tests()
 
 	if o.options['list-tests']:

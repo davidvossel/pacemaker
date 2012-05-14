@@ -80,6 +80,7 @@ struct mainloop_child_s {
     pid_t     pid;
     char     *desc;
     unsigned  timerid;
+    unsigned  watchid;
     gboolean  timeout;
     void     *privatedata;
 

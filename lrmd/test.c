@@ -388,7 +388,6 @@ int main(int argc, char ** argv)
 
 	trig = mainloop_add_trigger(G_PRIORITY_HIGH, start_test, NULL);
 	mainloop_set_trigger(trig);
-	mainloop_track_children(G_PRIORITY_HIGH);
 	mainloop_add_signal(SIGTERM, test_shutdown);
 
 	crm_info("Starting");

@@ -197,8 +197,6 @@ main(int argc, char ** argv)
 		exit(-1);
 	}
 
-
-	mainloop_track_children(G_PRIORITY_HIGH);
 	mainloop_add_signal(SIGTERM, lrmd_shutdown);
 	mainloop = g_main_new(FALSE);
 	crm_info("Starting");

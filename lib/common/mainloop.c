@@ -60,8 +60,6 @@ crm_trigger_prepare(GSource * source, gint * timeout)
     return trig->trigger;
 }
 
-static GHashTable *mainloop_process_table = NULL;
-
 static gboolean
 crm_trigger_check(GSource * source)
 {
@@ -598,43 +596,71 @@ mainloop_del_fd(mainloop_io_t *client)
 static gboolean
 child_timeout_callback(gpointer p)
 {
-    pid_t pid = (pid_t) GPOINTER_TO_INT(p);
-    mainloop_child_t *pinfo = (mainloop_child_t *) g_hash_table_lookup(
-            mainloop_process_table, p);
+    mainloop_child_t *child = p;
 
-    if (pinfo == NULL) {
+    child->timerid = 0;
+    if (child->timeout) {
+        crm_crit("%s process (PID %d) will not die!", child->desc, (int)child->pid);
         return FALSE;
     }
 
-    pinfo->timerid = 0;
-    if (pinfo->timeout) {
-        crm_crit("%s process (PID %d) will not die!", pinfo->desc, (int)pid);
-        return FALSE;
-    }
+    child->timeout = TRUE;
+    crm_warn("%s process (PID %d) timed out", child->desc, (int)child->pid);
 
-    pinfo->timeout = TRUE;
-    crm_warn("%s process (PID %d) timed out", pinfo->desc, (int)pid);
-
-    if (kill(pinfo->pid, SIGKILL) < 0) {
+    if (kill(child->pid, SIGKILL) < 0) {
         if (errno == ESRCH) {
             /* Nothing left to do */
             return FALSE;
         }
-        crm_perror(LOG_ERR, "kill(%d, KILL) failed", pid);
+        crm_perror(LOG_ERR, "kill(%d, KILL) failed", child->pid);
     }
 
-    pinfo->timerid = g_timeout_add(5000, child_timeout_callback, p);
+    child->timerid = g_timeout_add(5000, child_timeout_callback, child);
     return FALSE;
 }
 
 static void
-mainloop_child_destroy(gpointer data)
+mainloop_child_destroy(mainloop_child_t *child)
 {
-    mainloop_child_t *p = data;
+    if (child->timerid != 0) {
+        crm_trace("Removing timer %d", child->timerid);
+        g_source_remove(child->timerid);
+        child->timerid = 0;
+    }
 
-    free(p->desc);
+    free(child->desc);
+    g_free(child);
+}
 
-    g_free(p);
+static void
+child_death_dispatch(GPid pid, gint status, gpointer user_data)
+{
+    int signo = 0;
+    int exitcode = 0;
+    mainloop_child_t *child = user_data;
+
+    crm_trace("Managed process %d exited: %p", pid, child);
+
+    if (WIFEXITED(status)) {
+        exitcode = WEXITSTATUS(status);
+        crm_trace("Managed process %d (%s) exited with rc=%d", pid,
+                 child->desc, exitcode);
+
+    } else if (WIFSIGNALED(status)) {
+        signo = WTERMSIG(status);
+        crm_trace("Managed process %d (%s) exited with signal=%d", pid,
+                 child->desc, signo);
+    }
+#ifdef WCOREDUMP
+    if (WCOREDUMP(status)) {
+        crm_err("Managed process %d (%s) dumped core", pid, child->desc);
+    }
+#endif
+    child->callback(child, status, signo, exitcode);
+    crm_trace("Removed process entry for %d", pid);
+
+    mainloop_child_destroy(child);
+    return;
 }
 
 /* Create/Log a new tracked process
@@ -642,90 +668,21 @@ mainloop_child_destroy(gpointer data)
  */
 void
 mainloop_add_child(pid_t pid, int timeout, const char *desc, void * privatedata,
-                   void (*callback)(mainloop_child_t *p, int status, int signo,
-                                    int exitcode))
+    void (*callback)(mainloop_child_t *p, int status, int signo, int exitcode))
 {
-    mainloop_child_t *p = g_new(mainloop_child_t, 1);
+    mainloop_child_t *child = g_new(mainloop_child_t, 1);
 
-    if (mainloop_process_table == NULL) {
-        mainloop_process_table = g_hash_table_new_full(
-            g_direct_hash, g_direct_equal, NULL, mainloop_child_destroy);
-    }
-
-    p->pid = pid;
-    p->timerid = 0;
-    p->timeout = FALSE;
-    p->desc = strdup(desc);
-    p->privatedata = privatedata;
-    p->callback = callback;
+    child->pid = pid;
+    child->timerid = 0;
+    child->timeout = FALSE;
+    child->desc = strdup(desc);
+    child->privatedata = privatedata;
+    child->callback = callback;
 
     if (timeout) {
-        p->timerid = g_timeout_add(
-            timeout, child_timeout_callback, GINT_TO_POINTER(pid));
+        child->timerid = g_timeout_add(
+            timeout, child_timeout_callback, child);
     }
 
-    g_hash_table_insert(mainloop_process_table, GINT_TO_POINTER(abs(pid)), p);
-}
-
-static void
-child_death_dispatch(int sig)
-{
-    int status = 0;
-    while (TRUE) {
-        pid_t pid = wait3(&status, WNOHANG, NULL);
-        if (pid > 0) {
-            int signo = 0, exitcode = 0;
-
-            mainloop_child_t *p = g_hash_table_lookup(mainloop_process_table,
-                                                      GINT_TO_POINTER(pid));
-            crm_trace("Managed process %d exited: %p", pid, p);
-            if (p == NULL) {
-                continue;
-            }
-
-            if (WIFEXITED(status)) {
-                exitcode = WEXITSTATUS(status);
-                crm_trace("Managed process %d (%s) exited with rc=%d", pid,
-                         p->desc, exitcode);
-
-            } else if (WIFSIGNALED(status)) {
-                signo = WTERMSIG(status);
-                crm_trace("Managed process %d (%s) exited with signal=%d", pid,
-                         p->desc, signo);
-            }
-#ifdef WCOREDUMP
-            if (WCOREDUMP(status)) {
-                crm_err("Managed process %d (%s) dumped core", pid, p->desc);
-            }
-#endif
-            if (p->timerid != 0) {
-                crm_trace("Removing timer %d", p->timerid);
-                g_source_remove(p->timerid);
-                p->timerid = 0;
-            }
-            p->callback(p, status, signo, exitcode);
-            g_hash_table_remove(mainloop_process_table, GINT_TO_POINTER(pid));
-            crm_trace("Removed process entry for %d", pid);
-            return;
-
-        } else {
-            if (errno == EAGAIN) {
-                continue;
-            } else if (errno != ECHILD) {
-                crm_perror(LOG_ERR, "wait3() failed");
-            }
-            break;
-        }
-    }
-}
-
-void
-mainloop_track_children(int priority)
-{
-    if (mainloop_process_table == NULL) {
-        mainloop_process_table = g_hash_table_new_full(
-            g_direct_hash, g_direct_equal, NULL, NULL/*TODO: Add destructor */);
-    }
-
-    mainloop_add_signal(SIGCHLD, child_death_dispatch);
+    child->watchid = g_child_watch_add(pid, child_death_dispatch, child);
 }
