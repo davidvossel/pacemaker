@@ -88,15 +88,11 @@ struct mainloop_child_s {
     void (*callback)(mainloop_child_t* p, int status, int signo, int exitcode);
 };
 
-void
-mainloop_track_children(int priority);
-
 /*
  * Create a new tracked process
  * To track a process group, use -pid
  */
 void
 mainloop_add_child(pid_t pid, int timeout, const char *desc, void *privatedata,
-                   void (*callback)(mainloop_child_t* p, int status, int signo,
-                                    int exitcode));
+       void (*callback)(mainloop_child_t* p, int status, int signo, int exitcode));
 #endif
