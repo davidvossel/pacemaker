@@ -34,18 +34,22 @@ class Test:
 
 		self.executed = 0
 
-	def __new_cmd(self, cmd, args, exitcode, stdout_match):
+	def __new_cmd(self, cmd, args, exitcode, stdout_match, no_wait = 0):
 		self.cmds.append(
 			{
 				"cmd" : cmd,
 				"args" : args,
 				"expected_exitcode" : exitcode,
-				"stdout_match" : stdout_match
+				"stdout_match" : stdout_match,
+				"no_wait" : no_wait
 			}
 		)
 
 	def add_sys_cmd(self, cmd, args):
 		self.__new_cmd(cmd, args, 0, "")
+
+	def add_sys_cmd_no_wait(self, cmd, args):
+		self.__new_cmd(cmd, args, 0, "", 1)
 
 	def add_cmd_check_stdout(self, args, stdout_match):
 		self.__new_cmd(self.test_tool_location, args, 0, stdout_match)
@@ -63,11 +67,14 @@ class Test:
 		print "    %s" % self.result_txt
 
 	def run_cmd(self, args):
-
 		cmd = shlex.split(args['args'])
 		cmd.insert(0, args['cmd'])
 		test = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-		test.wait()
+
+		if args['no_wait'] == 0:
+			test.wait()
+		else:
+			return 0
 
 		if args['stdout_match'] != "" and test.communicate()[0].count(args['stdout_match']) == 0:
 			test.returncode = -2
@@ -111,7 +118,7 @@ class Tests:
 
 	def build_tests(self):
 		### register/unregister test ###
-		test = self.new_test("registration", "Simple resource registration test");
+		test = self.new_test("registration", "Simple resource registration test")
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -123,7 +130,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### start/stop test ###
-		test = self.new_test("start_stop", "Register a test, then start and stop it");
+		test = self.new_test("start_stop", "Register a test, then start and stop it")
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -144,8 +151,32 @@ class Tests:
 		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
+		### stonith start/stop test ###
+		test = self.new_test("stonith_start_stop", "Register a test, then start and stop it")
+		test.add_sys_cmd_no_wait("/usr/libexec/pacemaker/stonithd", "-s")
+		test.add_cmd("-c register_rsc "
+			"-r \"test_rsc\" "
+			"-C \"stonith\" "
+			"-P \"pacemaker\" "
+			"-T \"fence_pcmk\" "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
+			"-t 1000")
+		test.add_cmd("-c exec "
+			"-r \"test_rsc\" "
+			"-a \"start\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
+			"-t 1000")
+		test.add_cmd("-c exec "
+			"-r \"test_rsc\" "
+			"-a \"stop\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
+			"-t 1000")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_sys_cmd("killall", "-q -9 stonithd")
+
 		### start timeout test  ###
-		test = self.new_test("start_timeout", "Register a test, then start with a 1ms timeout period.");
+		test = self.new_test("start_timeout", "Register a test, then start with a 1ms timeout period.")
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -162,7 +193,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### start delay /stop test ###
-		test = self.new_test("start_delay_stop", "Register a test, then start with start_delay value, and stop it");
+		test = self.new_test("start_delay_stop", "Register a test, then start with start_delay value, and stop it")
 		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
 		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
@@ -176,7 +207,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor test ###
-		test = self.new_test("monitor_test", "Register a test, the start, monitor a few times, then stop");
+		test = self.new_test("monitor_test", "Register a test, the start, monitor a few times, then stop")
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -204,7 +235,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor and cancel test ###
-		test = self.new_test("monitor_and_cancel_test", "Register a test, the start, monitor a few times, then cancel the monitor");
+		test = self.new_test("monitor_and_cancel_test", "Register a test, the start, monitor a few times, then cancel the monitor")
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -242,7 +273,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor fail ###
-		test = self.new_test("monitor_fail_test", "Register a test, the start, monitor a few times, then make the monitor fail.");
+		test = self.new_test("monitor_fail_test", "Register a test, the start, monitor a few times, then make the monitor fail.")
 		test.add_cmd("-c register_rsc "
 			"-r \"test_rsc\" "
 			"-C \"ocf\" "
@@ -277,7 +308,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### get metadata ###
-		test = self.new_test("get_metadata", "Retrieve metadata for a resource");
+		test = self.new_test("get_metadata", "Retrieve metadata for a resource")
 		test.add_cmd_check_stdout("-c metadata "
 			"-C \"ocf\" "
 			"-P \"pacemaker\" "
@@ -295,24 +326,24 @@ class Tests:
 			"-T \"fake_agent\"")
 
 		### get stonith metadata ###
-		test = self.new_test("get_stonith_metadata", "Retrieve stonith metadata for a resource");
+		test = self.new_test("get_stonith_metadata", "Retrieve stonith metadata for a resource")
 		test.add_cmd_check_stdout("-c metadata "
 			"-C \"stonith\" "
 			"-P \"pacemaker\" "
 			"-T \"fence_pcmk\"", "resource-agent name=\"fence_pcmk\"")
 
 		### get agents ###
-		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.");
-		test.add_cmd_check_stdout("-c list_agents ", "Dummy");
+		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.")
+		test.add_cmd_check_stdout("-c list_agents ", "Dummy")
 
 		### get stonith agents  ###
-		test = self.new_test("check_stonith_agents", "Retrieve list of available resource agents, verifies fence_pcmk exists");
-		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk");
+		test = self.new_test("check_stonith_agents", "Retrieve list of available resource agents, verifies fence_pcmk exists")
+		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk")
 
 		### get providers  ###
-		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.");
-		test.add_cmd_check_stdout("-c list_providers ", "pacemaker");
-		test.add_cmd_check_stdout("-c list_providers -T ping", "pacemaker");
+		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.")
+		test.add_cmd_check_stdout("-c list_providers ", "pacemaker")
+		test.add_cmd_check_stdout("-c list_providers -T ping", "pacemaker")
 
 	def print_list(self):
 		print "\n==== %d TESTS FOUND ====" % (len(self.tests))
@@ -389,7 +420,7 @@ def main(argv):
 	o = TestOptions()
 	o.build_options(argv)
 
-	tests = Tests(lrmd_loc, test_loc);
+	tests = Tests(lrmd_loc, test_loc)
 	tests.build_tests()
 
 	if o.options['list-tests']:
