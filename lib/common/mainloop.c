@@ -656,7 +656,10 @@ child_death_dispatch(GPid pid, gint status, gpointer user_data)
         crm_err("Managed process %d (%s) dumped core", pid, child->desc);
     }
 #endif
-    child->callback(child, status, signo, exitcode);
+
+    if (child->callback) {
+       child->callback(child, status, signo, exitcode);
+    }
     crm_trace("Removed process entry for %d", pid);
 
     mainloop_child_destroy(child);
