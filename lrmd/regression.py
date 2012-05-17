@@ -21,13 +21,14 @@ import shlex
 import time
 
 class Test:
-	def __init__(self, name, description, lrmd_location, test_tool_location):
+	def __init__(self, name, description, lrmd_location, test_tool_location, verbose = 0):
 		self.name = name
 		self.description = description
 		self.cmds = []
 		self.iteration = 0;
 		self.daemon_location = lrmd_location
 		self.test_tool_location = test_tool_location
+		self.verbose = verbose
 
 		self.result_txt = ""
 		self.result_exitcode = 0;
@@ -35,6 +36,9 @@ class Test:
 		self.executed = 0
 
 	def __new_cmd(self, cmd, args, exitcode, stdout_match, no_wait = 0):
+		if self.verbose and cmd == self.test_tool_location:
+			args = args + " -V "
+
 		self.cmds.append(
 			{
 				"cmd" : cmd,
@@ -106,13 +110,14 @@ class Test:
 		return res
 
 class Tests:
-	def __init__(self, lrmd_location, test_tool_location):
+	def __init__(self, lrmd_location, test_tool_location, verbose = 0):
 		self.daemon_location = lrmd_location
 		self.test_tool_location = test_tool_location
 		self.tests = []
+		self.verbose = verbose
 
 	def new_test(self, name, description):
-		test = Test(name, description, self.daemon_location, self.test_tool_location)
+		test = Test(name, description, self.daemon_location, self.test_tool_location, self.verbose)
 		self.tests.append(test)
 		return test
 
@@ -317,6 +322,7 @@ class TestOptions:
 		self.options['list-tests'] = 0
 		self.options['run-all'] = 1
 		self.options['run-only'] = ""
+		self.options['verbose'] = 0
 		self.options['invalid-arg'] = ""
 		self.options['show-usage'] = 0
 
@@ -331,6 +337,8 @@ class TestOptions:
 				self.options['show-usage'] = 1
 			elif args[i] == "-l" or args[i] == "--list-tests":
 				self.options['list-tests'] = 1
+			elif args[i] == "-V" or args[i] == "--verbose":
+				self.options['verbose'] = 1
 			elif args[i] == "-r" or args[i] == "--run-only":
 				self.options['run-only'] = args[i+1]
 				skip = 1
@@ -342,6 +350,7 @@ class TestOptions:
 		print "\t [--help | -h]                     Show usage"
 		print "\t [--list-tests | -l]               Print out all registered tests."
 		print "\t [--run-only | -r 'testname']      Run a specific test"
+		print "\t [--verbose | -V]      Verbose output"
 		print "\n\tExample: "
 		print "\t\t python ./regression.py --run-only start_stop"
 
@@ -353,7 +362,7 @@ def main(argv):
 	o = TestOptions()
 	o.build_options(argv)
 
-	tests = Tests(lrmd_loc, test_loc)
+	tests = Tests(lrmd_loc, test_loc, o.options['verbose'])
 	tests.build_tests()
 
 	if o.options['list-tests']:
