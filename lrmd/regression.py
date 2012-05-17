@@ -99,7 +99,7 @@ class Test:
 			else:
 				print "Iteration %d SUCCESS" % (i)
 			i = i + 1
-		print "--- END LRMD '%s' TEST - %s \n" % (self.name, self.result_txt)
+		print "--- END LRMD '%s' \n" % (self.name)
 		lrmd.kill()
 
 		self.executed = 1
@@ -117,50 +117,76 @@ class Tests:
 		return test
 
 	def build_tests(self):
-		### register/unregister test ###
-		test = self.new_test("registration", "Simple resource registration test")
-		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		rsc_classes = ["ocf", "lsb", "stonith"]
+		common_cmds = {
+			"ocf_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C ocf -P pacemaker -T Dummy",
+			"ocf_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"ocf_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
+			"ocf_unreg_event"   : "-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"ocf_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
+			"ocf_start_event"   : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"ocf_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
+			"ocf_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"ocf_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"ocf_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000",
 
-		### start/stop ocf test ###
-		test = self.new_test("start_stop_ocf", "Register a test, then start and stop it")
-		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"stop\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+			"lsb_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C lsb -T \"/usr/share/pacemaker/tests/cts/LSBDummy\"",
+			"lsb_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"lsb_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
+			"lsb_unreg_event"   : "-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"lsb_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
+			"lsb_start_event"   : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"lsb_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
+			"lsb_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"lsb_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"lsb_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000",
 
 
-		### start/stop lsb test ###
-		test = self.new_test("start_stop_lsb", "Register a test, then start and stop it")
-		test.add_cmd("-c register_rsc -r \"test_rsc\" -T \"/usr/share/pacemaker/tests/cts/LSBDummy\" -C \"lsb\" -t 1000 "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -V ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -V ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"stop\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+			"stonith_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C stonith -P pacemaker -T fence_pcmk",
+			"stonith_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"stonith_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
+			"stonith_unreg_event"   : "-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"stonith_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
+			"stonith_start_event"   : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"stonith_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
+			"stonith_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"stonith_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"stonith_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000",
+		}
 
-		### stonith start/stop test ###
-		test = self.new_test("stonith_start_stop", "Register a test, then start and stop it")
-		test.add_sys_cmd_no_wait("/usr/libexec/pacemaker/stonithd", "-s")
-		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"stonith\" -P \"pacemaker\" -T \"fence_pcmk\" -t 1000 "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"stop\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_sys_cmd("killall", "-q -9 stonithd")
+		### register/unregister tests ###
+		for rsc in rsc_classes:
+			test = self.new_test("registration_%s" % (rsc), "Simple resource registration test for %s standard" % (rsc))
+			test.add_cmd(common_cmds["%s_reg_line" % (rsc)] + " " + common_cmds["%s_reg_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
 
-		### start timeout test  ###
+		### start/stop tests  ###
+		for rsc in rsc_classes:
+			test = self.new_test("start_stop_%s" % (rsc), "Simple start and stop test for %s standard" % (rsc))
+			if rsc == "stonith":
+				test.add_sys_cmd_no_wait("/usr/libexec/pacemaker/stonithd", "-s")
+			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_stop_line" % (rsc)]  + " " + common_cmds["%s_stop_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
+			if rsc == "stonith":
+				test.add_sys_cmd("killall", "-q -9 stonithd")
+
+		### monitor test ###
+		for rsc in rsc_classes:
+			test = self.new_test("monitor_%s" % (rsc), "Register a test, start, monitor a few times, then stop for %s standard" % (rsc))
+			if rsc == "stonith":
+				test.add_sys_cmd_no_wait("/usr/libexec/pacemaker/stonithd", "-s")
+			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_monitor_line" % (rsc)] + " " + common_cmds["%s_monitor_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_monitor_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_stop_line" % (rsc)]  + " " + common_cmds["%s_stop_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
+			if rsc == "stonith":
+				test.add_sys_cmd("killall", "-q -9 stonithd")
+
+		### CUSTOM start timeout test  ###
 		test = self.new_test("start_timeout", "Register a test, then start with a 1ms timeout period.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
@@ -172,7 +198,7 @@ class Tests:
 		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
-		### start delay /stop test ###
+		### CUSTOM start delay /stop test ###
 		test = self.new_test("start_delay_stop", "Register a test, then start with start_delay value, and stop it")
 		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
@@ -184,22 +210,6 @@ class Tests:
 		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-
-		### monitor test ###
-		test = self.new_test("monitor_test", "Register a test, the start, monitor a few times, then stop")
-		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000"
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec "
-			"-r \"test_rsc\" "
-			"-a \"stop\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" "
-			"-t 1000")
-		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor and cancel test ###
