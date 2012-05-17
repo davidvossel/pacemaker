@@ -240,14 +240,15 @@ typedef struct lrmd_api_operations_s
 		int interval);
 
 	/*!
-	 * \brief Retrieve a list of installed resource agents from all providers
+	 * \brief Retrieve a list of installed resource agents.
 	 *
+	 * \note if class is not provided, all known agents will be returned
 	 * \note list must be freed using lrmd_list_freeall()
 	 *
 	 * \retval num items in list on success
 	 * \retval negative error code on failure
 	 */
-	int (*list_agents)(lrmd_t *lrmd, lrmd_list_t **agents);
+	int (*list_agents)(lrmd_t *lrmd, lrmd_list_t **agents, const char *class);
 
 	/*!
 	 * \brief Retrieve a list of resource agent providers
@@ -259,7 +260,7 @@ typedef struct lrmd_api_operations_s
 	 * \retval num items in list on success
 	 * \retval negative error code on failure
 	 */
-	int (*list_providers)(lrmd_t *lrmd,
+	int (*list_ocf_providers)(lrmd_t *lrmd,
 		const char *agent,
 		lrmd_list_t **providers);
 

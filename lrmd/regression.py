@@ -341,9 +341,9 @@ class Tests:
 		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk")
 
 		### get providers  ###
-		test = self.new_test("list_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.")
-		test.add_cmd_check_stdout("-c list_providers ", "pacemaker")
-		test.add_cmd_check_stdout("-c list_providers -T ping", "pacemaker")
+		test = self.new_test("list_ocf_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.")
+		test.add_cmd_check_stdout("-c list_ocf_providers ", "pacemaker")
+		test.add_cmd_check_stdout("-c list_ocf_providers -T ping", "pacemaker")
 
 	def print_list(self):
 		print "\n==== %d TESTS FOUND ====" % (len(self.tests))

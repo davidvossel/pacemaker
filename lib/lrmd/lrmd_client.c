@@ -533,26 +533,53 @@ lrmd_api_cancel(lrmd_t *lrmd,
 }
 
 static int
-lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
+list_stonith_agents(lrmd_list_t **resources)
 {
-	int rc = lrmd_ok;
+	int rc = 0;
+	stonith_t *stonith_api = NULL;
+	stonith_key_value_t *stonith_resources = NULL;
+	stonith_key_value_t *dIter = NULL;
+
+	stonith_api = stonith_api_new();
+	stonith_api->cmds->list(stonith_api, st_opt_sync_call, NULL, &stonith_resources, 0);
+	stonith_api_delete(stonith_api);
+
+	for (dIter = stonith_resources; dIter; dIter = dIter->next) {
+		rc++;
+		*resources = lrmd_list_add(*resources, dIter->value);
+	}
+
+	stonith_key_value_freeall(stonith_resources, 1, 0);
+	return rc;
+}
+
+static int
+list_lsb_agents(lrmd_list_t **resources)
+{
+	int rc = 0;
+	GListPtr gIter = NULL;
+	GList *agents = NULL;
+
+	agents = resources_list_agents("lsb", NULL);
+	for (gIter = agents; gIter != NULL; gIter = gIter->next) {
+		*resources = lrmd_list_add(*resources, (const char *) gIter->data);
+		rc++;
+	}
+	g_list_free_full(agents, free);
+	return rc;
+}
+
+static int
+list_ocf_agents(lrmd_list_t **resources)
+{
+	int rc = 0;
 	char *provider = NULL;
 	GList *ocf_providers = NULL;
-	GList *lsb_providers = NULL;
 	GList *agents = NULL;
 	GListPtr gIter = NULL;
 	GListPtr gIter2 = NULL;
 
-    stonith_t *stonith_api = NULL;
-    stonith_key_value_t *stonith_resources = NULL;
-    stonith_key_value_t *dIter = NULL;
-
 	ocf_providers = resources_list_providers("ocf");
-	lsb_providers = resources_list_providers("lsb");
-
-    stonith_api = stonith_api_new();
-    stonith_api->cmds->list(stonith_api, st_opt_sync_call, NULL, &stonith_resources, 0);
-    stonith_api_delete(stonith_api);
 
 	for (gIter = ocf_providers; gIter != NULL; gIter = gIter->next) {
 		provider = gIter->data;
@@ -565,24 +592,29 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources)
 		g_list_free_full(agents, free);
 	}
 
-	for (gIter = lsb_providers; gIter != NULL; gIter = gIter->next) {
-		provider = gIter->data;
-
-		agents = resources_list_agents("lsb", provider);
-		for (gIter2 = agents; gIter2 != NULL; gIter2 = gIter2->next) {
-			*resources = lrmd_list_add(*resources, (const char *) gIter2->data);
-			rc++;
-		}
-		g_list_free_full(agents, free);
-	}
-
-    for (dIter = stonith_resources; dIter; dIter = dIter->next) {
-		*resources = lrmd_list_add(*resources, dIter->value);
-    }
-
-    stonith_key_value_freeall(stonith_resources, 1, 0);
 	g_list_free_full(ocf_providers, free);
-	g_list_free_full(lsb_providers, free);
+	return rc;
+}
+
+static int
+lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources, const char *class)
+{
+	int rc = lrmd_ok;
+
+	if (safe_str_eq(class, "ocf")) {
+		rc += list_ocf_agents(resources);
+	} else if (safe_str_eq(class, "lsb")) {
+		rc += list_lsb_agents(resources);
+	} else if (safe_str_eq(class, "stonith")) {
+		rc += list_stonith_agents(resources);
+	} else if (!class) {
+		rc += list_ocf_agents(resources);
+		rc += list_lsb_agents(resources);
+		rc += list_stonith_agents(resources);
+	} else {
+		crm_err("Unknown class %s", class);
+		rc = lrmd_err_generic;
+	}
 
 	return rc;
 }
@@ -605,16 +637,14 @@ does_provider_have_agent(const char *agent, const char *provider, const char *cl
 }
 
 static int
-lrmd_api_list_providers(lrmd_t *lrmd, const char *agent, lrmd_list_t **providers)
+lrmd_api_list_ocf_providers(lrmd_t *lrmd, const char *agent, lrmd_list_t **providers)
 {
 	int rc = lrmd_ok;
 	char *provider = NULL;
 	GList *ocf_providers = NULL;
-	GList *lsb_providers = NULL;
 	GListPtr gIter = NULL;
 
 	ocf_providers = resources_list_providers("ocf");
-	lsb_providers = resources_list_providers("lsb");
 
 	for (gIter = ocf_providers; gIter != NULL; gIter = gIter->next) {
 		provider = gIter->data;
@@ -624,16 +654,7 @@ lrmd_api_list_providers(lrmd_t *lrmd, const char *agent, lrmd_list_t **providers
 		}
 	}
 
-	for (gIter = lsb_providers; gIter != NULL; gIter = gIter->next) {
-		provider = gIter->data;
-		if (!agent || does_provider_have_agent(agent, provider, "lsb")) {
-			*providers = lrmd_list_add(*providers, (const char *) gIter->data);
-			rc++;
-		}
-	}
-
 	g_list_free_full(ocf_providers, free);
-	g_list_free_full(lsb_providers, free);
 
 	return rc;
 }
@@ -671,7 +692,7 @@ lrmd_api_new(void)
 	new_lrmd->cmds->exec = lrmd_api_exec;
 	new_lrmd->cmds->cancel = lrmd_api_cancel;
 	new_lrmd->cmds->list_agents = lrmd_api_list_agents;
-	new_lrmd->cmds->list_providers = lrmd_api_list_providers;
+	new_lrmd->cmds->list_ocf_providers = lrmd_api_list_ocf_providers;
 	new_lrmd->cmds->shutdown = lrmd_api_shutdown;
 
 	return new_lrmd;
