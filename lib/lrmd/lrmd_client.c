@@ -439,7 +439,7 @@ lrmd_api_get_metadata(lrmd_t *lrmd,
 {
 	svc_action_t *action = NULL;
 
-	if (!class || !provider || !type) {
+	if (!class || !type) {
 		return lrmd_err_missing;
 	}
 
