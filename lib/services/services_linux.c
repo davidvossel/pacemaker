@@ -53,13 +53,17 @@ set_fd_opts(int fd, int opts)
 static gboolean
 read_output(int fd, svc_action_t *op)
 {
-    char * data = NULL;
+    char *data = NULL;
     int rc = 0, len = 0;
     gboolean is_err = FALSE;
     char buf[500];
     static const size_t buf_read_len = sizeof(buf) - 1;
 
     crm_trace("%p", op);
+
+    if (fd < 0) {
+        return FALSE;
+    }
 
     if (fd == op->opaque->stderr_fd) {
         is_err = TRUE;
@@ -76,10 +80,9 @@ read_output(int fd, svc_action_t *op)
         rc = read(fd, buf, buf_read_len);
         if (rc > 0) {
             buf[rc] = 0;
-            data = realloc(data, len + rc + 1);
+            crm_realloc(data, len + rc + 1);
             sprintf(data + len, "%s", buf);
             len += rc;
-
         } else if (errno != EINTR) {
             /* error or EOF
              * Cleanup happens in pipe_done()
@@ -103,14 +106,14 @@ static int
 dispatch_stdout(gpointer userdata)
 {
     svc_action_t* op = (svc_action_t *) userdata;
-	return read_output(op->opaque->stdout_fd, op);
+    return read_output(op->opaque->stdout_fd, op);
 }
 
 static int
 dispatch_stderr(gpointer userdata)
 {
     svc_action_t* op = (svc_action_t *) userdata;
-	return read_output(op->opaque->stderr_fd, op);
+    return read_output(op->opaque->stderr_fd, op);
 }
 
 static void
@@ -121,7 +124,7 @@ pipe_out_done(gpointer user_data)
     crm_trace("%p", op);
 
     op->opaque->stdout_gsource = NULL;
-    if (op->opaque->stdout_fd > STDERR_FILENO) {
+    if (op->opaque->stdout_fd > STDOUT_FILENO) {
         close(op->opaque->stdout_fd);
     }
     op->opaque->stdout_fd = -1;
@@ -139,13 +142,13 @@ pipe_err_done(gpointer user_data)
 }
 
 static struct mainloop_fd_callbacks stdout_callbacks = {
-	.dispatch = dispatch_stdout,
-	.destroy = pipe_out_done,
+    .dispatch = dispatch_stdout,
+    .destroy = pipe_out_done,
 };
 
 static struct mainloop_fd_callbacks stderr_callbacks = {
-	.dispatch = dispatch_stderr,
-	.destroy = pipe_err_done,
+    .dispatch = dispatch_stderr,
+    .destroy = pipe_err_done,
 };
 
 static void
@@ -218,6 +221,20 @@ operation_finished(mainloop_child_t *p, int status, int signo, int exitcode)
     p->privatedata = NULL;
     op->status = PCMK_LRM_OP_DONE;
     CRM_ASSERT(op->pid == p->pid);
+
+    if (op->opaque->stderr_gsource) {
+        /* Make sure we have read everything from the buffer.
+         * Depending on the priority mainloop gives the fd, operation_finished
+         * could occur before all the reads are done.  Force the read now.*/
+        dispatch_stderr(op);
+    }
+
+    if (op->opaque->stdout_gsource) {
+        /* Make sure we have read everything from the buffer.
+         * Depending on the priority mainloop gives the fd, operation_finished
+         * could occur before all the reads are done.  Force the read now.*/
+        dispatch_stdout(op);
+    }
 
     if (signo) {
         if (p->timeout) {
@@ -423,14 +440,14 @@ services_os_action_execute(svc_action_t* op, gboolean synchronous)
                            operation_finished);
 
         op->opaque->stdout_gsource = mainloop_add_fd(op->id,
-			op->opaque->stdout_fd,
-			op,
-			&stdout_callbacks);
+            op->opaque->stdout_fd,
+            op,
+            &stdout_callbacks);
 
         op->opaque->stderr_gsource = mainloop_add_fd(op->id,
-			op->opaque->stderr_fd,
-			op,
-			&stderr_callbacks);
+            op->opaque->stderr_fd,
+            op,
+            &stderr_callbacks);
     }
 
     return TRUE;
@@ -507,7 +524,11 @@ services_os_set_exec(svc_action_t *op)
         op->opaque->args[3] = NULL;
 
     } else {
-        if (asprintf(&op->opaque->exec, "%s/%s", LSB_ROOT, op->agent) == -1) {
+        if (op->agent[0] == '/') {
+            /* if given an absolute path, use that instead
+             * of tacking on the LSB_ROOT path to the front */
+            op->opaque->exec = crm_strdup(op->agent);
+        } else if (asprintf(&op->opaque->exec, "%s/%s", LSB_ROOT, op->agent) == -1) {
             return;
         }
         op->opaque->args[0] = strdup(op->opaque->exec);

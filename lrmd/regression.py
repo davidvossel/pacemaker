@@ -124,12 +124,24 @@ class Tests:
 		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
-		### start/stop test ###
-		test = self.new_test("start_stop", "Register a test, then start and stop it")
+		### start/stop ocf test ###
+		test = self.new_test("start_stop_ocf", "Register a test, then start and stop it")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"stop\" -t 1000 "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+
+
+		### start/stop lsb test ###
+		test = self.new_test("start_stop_lsb", "Register a test, then start and stop it")
+		test.add_cmd("-c register_rsc -r \"test_rsc\" -T \"/usr/share/pacemaker/tests/cts/LSBDummy\" -C \"lsb\" -t 1000 "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -V ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -V ")
 		test.add_cmd("-c exec -r \"test_rsc\" -a \"stop\" -t 1000 "
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
@@ -251,7 +263,7 @@ class Tests:
 		test = self.new_test("check_stonith_agents", "Retrieve list of available resource agents, verifies fence_pcmk exists")
 		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk")
 
-		### get providers  ###
+		### get ocf providers  ###
 		test = self.new_test("list_ocf_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.")
 		test.add_cmd_check_stdout("-c list_ocf_providers ", "pacemaker")
 		test.add_cmd_check_stdout("-c list_ocf_providers -T ping", "pacemaker")
