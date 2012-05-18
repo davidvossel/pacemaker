@@ -28,7 +28,6 @@
 #include <crm/common/ipc.h>
 
 #include <lrmd_private.h>
-#include <crm/stonith-ng.h>
 
 GHashTable *rsc_list = NULL;
 GHashTable *client_list = NULL;
@@ -300,16 +299,13 @@ static int
 lrmd_rsc_execute_stonith(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 {
 	int rc = 0;
-	stonith_t *stonith_api = stonith_api_new();
-	rc = stonith_api->cmds->connect(stonith_api, "lrmd", NULL);
+	stonith_t *stonith_api = get_stonith_connection();
 
 	if (rc) {
-		crm_err("Unable to connect to stonith daemon to execute command. error: %d", rc);
 		cmd->exec_rc = rc;
 		cmd->rc = lrmd_err_stonith_connection;
 		cmd->lrmd_op_status = PCMK_LRM_OP_ERROR;
 		cmd_finalize(cmd, rsc);
-		stonith_api_delete(stonith_api);
 		return lrmd_err_stonith_connection;
 	}
 
@@ -368,9 +364,6 @@ lrmd_rsc_execute_stonith(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 		cmd->rc = cmd->exec_rc = lrmd_ok;
 		cmd->lrmd_op_status = PCMK_LRM_OP_DONE;
 	}
-
-	stonith_api->cmds->disconnect(stonith_api);
-	stonith_api_delete(stonith_api);
 
 	if (cmd->interval > 0) {
 		rsc->recurring_ops = g_list_append(rsc->recurring_ops, cmd);

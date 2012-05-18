@@ -23,6 +23,7 @@
 #include <glib.h>
 #include <crm/common/ipc.h>
 #include <crm/lrmd.h>
+#include <crm/stonith-ng.h>
 
 extern GHashTable *rsc_list;
 extern GHashTable *client_list;
@@ -63,5 +64,11 @@ void process_lrmd_message(lrmd_client_t *client, xmlNode *request);
 void free_rsc(gpointer data);
 
 void lrmd_shutdown(int nsig);
+
+/*
+ * \brief Don't worry about freeing this connection. It is 
+ *        taken care of after mainloop exits by the main() function.
+ */
+stonith_t *get_stonith_connection(void);
 
 #endif

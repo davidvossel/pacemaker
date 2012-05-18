@@ -31,6 +31,37 @@
 
 GMainLoop *mainloop = NULL;
 qb_ipcs_service_t *ipcs = NULL;
+stonith_t *stonith_api = NULL;
+
+
+stonith_t *get_stonith_connection(void)
+{
+	if (stonith_api && stonith_api->state == stonith_disconnected) {
+		stonith_api_delete(stonith_api);
+		stonith_api = NULL;
+	}
+
+	if (!stonith_api) {
+		int rc = 0;
+		int tries = 10;
+		stonith_api = stonith_api_new();
+		do {
+			rc = stonith_api->cmds->connect(stonith_api, "lrmd", NULL);
+			if (rc == stonith_ok) {
+				break;
+			}
+			sleep(1);
+			tries--;
+		} while (tries);
+
+		if (rc) {
+			crm_err("Unable to connect to stonith daemon to execute command. error: %s", stonith_error2string(rc));
+			stonith_api_delete(stonith_api);
+			stonith_api = NULL;
+		}
+	}
+	return stonith_api;
+}
 
 static int32_t
 lrmd_ipc_accept(qb_ipcs_connection_t *c, uid_t uid, gid_t gid)
@@ -207,6 +238,11 @@ main(int argc, char ** argv)
 	mainloop_del_ipc_server(ipcs);
 	g_hash_table_destroy(client_list);
 	g_hash_table_destroy(rsc_list);
+
+	if (stonith_api) {
+		stonith_api->cmds->disconnect(stonith_api);
+		stonith_api_delete(stonith_api);
+	}
 
 	return rc;
 }
