@@ -33,6 +33,9 @@ class Test:
 		self.result_txt = ""
 		self.result_exitcode = 0;
 
+		self.lrmd_process = None
+		self.stonith_process = None
+
 		self.executed = 0
 
 	def __new_cmd(self, cmd, args, exitcode, stdout_match, no_wait = 0):
@@ -48,6 +51,24 @@ class Test:
 				"no_wait" : no_wait
 			}
 		)
+
+	def start_environment(self):
+		### make sure nothing we are in control here ###
+		cmd = shlex.split("killall -q -9 stonithd lrmd lt-lrmd")
+		test = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+		test.wait()
+
+		self.stonith_process = subprocess.Popen(shlex.split("/usr/libexec/pacemaker/stonithd -s"))
+		self.lrmd_process = subprocess.Popen(self.daemon_location)
+
+	def clean_environment(self):
+		if self.lrmd_process:
+			self.lrmd_process.kill()
+		if self.stonith_process:
+			self.stonith_process.kill()
+
+		self.lrmd_process = None
+		self.stonith_process = None
 
 	def add_sys_cmd(self, cmd, args):
 		self.__new_cmd(cmd, args, 0, "")
@@ -80,9 +101,14 @@ class Test:
 		else:
 			return 0
 
-		if args['stdout_match'] != "" and test.communicate()[0].count(args['stdout_match']) == 0:
+		output = test.communicate()[0]
+
+		if args['stdout_match'] != "" and output.count(args['stdout_match']) == 0:
 			test.returncode = -2
 			print "STDOUT string '%s' was not found in cmd output" % (args['stdout_match'])
+
+		if self.verbose:
+			print "    %s" % output
 
 		return test.returncode;
 
@@ -90,9 +116,9 @@ class Test:
 		res = 0
 		i = 1
 		print "\n--- BEGIN LRMD TEST %s " % self.name
+		self.start_environment()
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
-		lrmd = subprocess.Popen(self.daemon_location)
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != cmd['expected_exitcode']:
@@ -103,8 +129,8 @@ class Test:
 			else:
 				print "Iteration %d SUCCESS" % (i)
 			i = i + 1
+		self.clean_environment()
 		print "--- END LRMD '%s' \n" % (self.name)
-		lrmd.kill()
 
 		self.executed = 1
 		return res
@@ -121,7 +147,9 @@ class Tests:
 		self.tests.append(test)
 		return test
 
-	def build_tests(self):
+	### These are tests that should apply to all resource classes ###
+	def build_generic_tests(self):
+
 		rsc_classes = ["ocf", "lsb", "stonith"]
 		common_cmds = {
 			"ocf_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C ocf -P pacemaker -T Dummy",
@@ -133,7 +161,10 @@ class Tests:
 			"ocf_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
 			"ocf_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
 			"ocf_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
-			"ocf_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000",
+			"ocf_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000",
+			"ocf_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"ocf_cancel_event"  : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ",
+
 
 			"lsb_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C lsb -T \"/usr/share/pacemaker/tests/cts/LSBDummy\"",
 			"lsb_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
@@ -143,8 +174,10 @@ class Tests:
 			"lsb_start_event"   : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
 			"lsb_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
 			"lsb_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
-			"lsb_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
-			"lsb_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000",
+			"lsb_monitor_line"  : "-c exec -r \"test_rsc\" -a \"status\" -i \"1000\" -t 1000",
+			"lsb_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:status rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000",
+			"lsb_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"status\" -i \"1000\" -t \"1000\" ",
+			"lsb_cancel_event"  : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:status rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ",
 
 
 			"stonith_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C stonith -P pacemaker -T fence_pcmk",
@@ -156,42 +189,52 @@ class Tests:
 			"stonith_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
 			"stonith_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
 			"stonith_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
-			"stonith_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000",
+			"stonith_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 3000",
+			"stonith_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"stonith_cancel_event"  : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ",
 		}
 
 		### register/unregister tests ###
 		for rsc in rsc_classes:
-			test = self.new_test("registration_%s" % (rsc), "Simple resource registration test for %s standard" % (rsc))
+			test = self.new_test("generic_registration_%s" % (rsc), "Simple resource registration test for %s standard" % (rsc))
 			test.add_cmd(common_cmds["%s_reg_line" % (rsc)] + " " + common_cmds["%s_reg_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
 
 		### start/stop tests  ###
 		for rsc in rsc_classes:
-			test = self.new_test("start_stop_%s" % (rsc), "Simple start and stop test for %s standard" % (rsc))
-			if rsc == "stonith":
-				test.add_sys_cmd_no_wait("/usr/libexec/pacemaker/stonithd", "-s")
+			test = self.new_test("generic_start_stop_%s" % (rsc), "Simple start and stop test for %s standard" % (rsc))
 			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_stop_line" % (rsc)]  + " " + common_cmds["%s_stop_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
-			if rsc == "stonith":
-				test.add_sys_cmd("killall", "-q -9 stonithd")
 
 		### monitor test ###
 		for rsc in rsc_classes:
-			test = self.new_test("monitor_%s" % (rsc), "Register a test, start, monitor a few times, then stop for %s standard" % (rsc))
-			if rsc == "stonith":
-				test.add_sys_cmd_no_wait("/usr/libexec/pacemaker/stonithd", "-s")
+			test = self.new_test("generic_monitor_%s" % (rsc), "Register a test, start, monitor a few times, then stop for %s standard" % (rsc))
 			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_monitor_line" % (rsc)] + " " + common_cmds["%s_monitor_event" % (rsc)])
-			test.add_cmd(common_cmds["%s_monitor_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_monitor_event" % (rsc)]) ### If this fails, that means the monitor is not being rescheduled ####
 			test.add_cmd(common_cmds["%s_stop_line" % (rsc)]  + " " + common_cmds["%s_stop_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
-			if rsc == "stonith":
-				test.add_sys_cmd("killall", "-q -9 stonithd")
 
-		### CUSTOM start timeout test  ###
+		### monitor cancel test ###
+		for rsc in rsc_classes:
+			test = self.new_test("generic_monitor_cancel_%s" % (rsc), "Register a test, start, monitor a few times, then stop for %s standard" % (rsc))
+			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_monitor_line" % (rsc)] + " " + common_cmds["%s_monitor_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_monitor_event" % (rsc)]) ### If this fails, that means the monitor is not being rescheduled ####
+			test.add_cmd(common_cmds["%s_monitor_event" % (rsc)]) ### If this fails, that means the monitor is not being rescheduled ####
+			test.add_cmd(common_cmds["%s_cancel_line" % (rsc)] + " " + common_cmds["%s_cancel_event" % (rsc)])
+			test.add_expected_fail_cmd(common_cmds["%s_monitor_event" % (rsc)]) ### If this happens the monitor did not actually cancel correctly. ###
+			test.add_expected_fail_cmd(common_cmds["%s_monitor_event" % (rsc)]) ### If this happens the monitor did not actually cancel correctly. ###
+			test.add_cmd(common_cmds["%s_stop_line" % (rsc)]  + " " + common_cmds["%s_stop_event" % (rsc)])
+			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
+
+	### These are tests that target specific cases ###
+	def build_custom_tests(self):
+		### start timeout test  ###
 		test = self.new_test("start_timeout", "Register a test, then start with a 1ms timeout period.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
@@ -203,7 +246,7 @@ class Tests:
 		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
-		### CUSTOM start delay /stop test ###
+		### start delay /stop test ###
 		test = self.new_test("start_delay_stop", "Register a test, then start with start_delay value, and stop it")
 		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
@@ -215,25 +258,6 @@ class Tests:
 		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
-			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-
-		### monitor and cancel test ###
-		test = self.new_test("monitor_and_cancel_test", "Register a test, the start, monitor a few times, then cancel the monitor")
-		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
-			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"monitor\" -i \"100\" -t 1000"
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
-		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
-		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
-		test.add_cmd("-c cancel -r \"test_rsc\" -a \"monitor\" -i \"100\" -t \"1000\" "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ")
-		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"stop\" -t 1000 "
-			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
-		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor fail ###
@@ -363,7 +387,8 @@ def main(argv):
 	o.build_options(argv)
 
 	tests = Tests(lrmd_loc, test_loc, o.options['verbose'])
-	tests.build_tests()
+	tests.build_generic_tests()
+	tests.build_custom_tests()
 
 	if o.options['list-tests']:
 		tests.print_list()

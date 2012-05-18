@@ -32,17 +32,20 @@
 
 GHashTable *rsc_list = NULL;
 GHashTable *client_list = NULL;
-static gboolean lrmd_rsc_dispatch(gpointer user_data);
 
 typedef struct lrmd_cmd_s {
 	int timeout;
 	int interval;
 	int start_delay;
-	int delay_id;
+
 	int call_id;
 	int rc;
 	int exec_rc;
 	int lrmd_op_status;
+
+	/* Timer ids, must be removed on cmd destruction. */
+	int delay_id;
+	int stonith_recurring_id;
 
 	char *origin;
 	char *rsc_id;
@@ -50,6 +53,9 @@ typedef struct lrmd_cmd_s {
 
 	GHashTable *params;
 } lrmd_cmd_t;
+
+static void cmd_finalize(lrmd_cmd_t *cmd, lrmd_rsc_t *rsc);
+static gboolean lrmd_rsc_dispatch(gpointer user_data);
 
 static lrmd_rsc_t *
 build_rsc_from_xml(xmlNode *msg)
@@ -93,6 +99,9 @@ create_lrmd_cmd(xmlNode *msg)
 static void
 free_lrmd_cmd(lrmd_cmd_t *cmd)
 {
+	if (cmd->stonith_recurring_id) {
+		g_source_remove(cmd->stonith_recurring_id);
+	}
 	if (cmd->delay_id) {
 		g_source_remove(cmd->delay_id);
 	}
@@ -103,6 +112,33 @@ free_lrmd_cmd(lrmd_cmd_t *cmd)
 	crm_free(cmd->action);
 	crm_free(cmd->rsc_id);
 	crm_free(cmd);
+}
+
+static gboolean
+stonith_recurring_op_helper(gpointer data)
+{
+	lrmd_cmd_t *cmd = data;
+	lrmd_rsc_t *rsc = NULL;
+
+	cmd->stonith_recurring_id = 0;
+
+	rsc = cmd->rsc_id ? g_hash_table_lookup(rsc_list, cmd->rsc_id) : NULL;
+
+	if (!rsc) {
+		/* This will never happen, but for the sake of completion
+		 * this is what should happen if it did. */
+		cmd->rc = lrmd_ok;
+		cmd->lrmd_op_status = PCMK_LRM_OP_CANCELLED;
+		cmd_finalize(cmd, NULL);
+	} else {
+		/* take it out of recurring_ops list, and put it in the pending ops
+		 * to be executed */
+		rsc->recurring_ops = g_list_remove(rsc->recurring_ops, cmd);
+		rsc->pending_ops = g_list_append(rsc->pending_ops, cmd);
+		mainloop_set_trigger(rsc->work);
+	}
+
+	return FALSE;
 }
 
 static gboolean
@@ -227,8 +263,8 @@ cmd_finalize(lrmd_cmd_t *cmd, lrmd_rsc_t *rsc)
 	crm_trace("Resource operation rsc:%s action:%s completed", cmd->rsc_id, cmd->action);
 	send_cmd_complete_notify(cmd);
 
-	if (rsc) {
-		rsc->active = 0;
+	if (rsc && (rsc->active == cmd)) {
+		rsc->active = NULL;
 		mainloop_set_trigger(rsc->work);
 	}
 
@@ -272,6 +308,7 @@ lrmd_rsc_execute_stonith(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 		cmd->exec_rc = rc;
 		cmd->rc = lrmd_err_stonith_connection;
 		cmd->lrmd_op_status = PCMK_LRM_OP_ERROR;
+		cmd_finalize(cmd, rsc);
 		stonith_api_delete(stonith_api);
 		return lrmd_err_stonith_connection;
 	}
@@ -335,42 +372,19 @@ lrmd_rsc_execute_stonith(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 	stonith_api->cmds->disconnect(stonith_api);
 	stonith_api_delete(stonith_api);
 
+	if (cmd->interval > 0) {
+		rsc->recurring_ops = g_list_append(rsc->recurring_ops, cmd);
+		cmd->stonith_recurring_id = g_timeout_add(cmd->interval, stonith_recurring_op_helper, cmd);
+	}
+	cmd_finalize(cmd, rsc);
+
 	return rc;
 }
 
-static gboolean
-lrmd_rsc_execute(lrmd_rsc_t *rsc)
+static int
+lrmd_rsc_execute_service_lib(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 {
-	lrmd_cmd_t *cmd = NULL;
 	svc_action_t *action = NULL;
-	CRM_CHECK(rsc != NULL, return FALSE);
-
-	if (rsc->active) {
-		crm_trace("%s is still active with pid %u", rsc->rsc_id, rsc->active);
-		return TRUE;
-	}
-
-	if (rsc->pending_ops) {
-		GList *first = rsc->pending_ops;
-		cmd = first->data;
-		if (cmd->delay_id) {
-			crm_trace("Command %s %s was asked to run too early, waiting for start_delay timeout of %dms",
-				cmd->rsc_id, cmd->action, cmd->start_delay);
-			return TRUE;
-		}
-		rsc->pending_ops = g_list_remove_link(rsc->pending_ops, first);
-		g_list_free_1(first);
-	}
-
-	if (!cmd) {
-		crm_trace("Nothing further to do for %s", rsc->rsc_id);
-		return TRUE;
-	}
-
-	if (safe_str_eq(rsc->class, "stonith")) {
-		lrmd_rsc_execute_stonith(rsc, cmd);
-		goto exec_done;
-	}
 
 	crm_trace("Creating action, resource:%s action:%s class:%s provider:%s agent:%s",
 		rsc->rsc_id,
@@ -407,13 +421,53 @@ lrmd_rsc_execute(lrmd_rsc_t *rsc)
 	if (cmd->interval) {
 		rsc->recurring_ops = g_list_append(rsc->recurring_ops, cmd);
 	}
+
+	/* The cmd will be finalized by the action_complete callback after
+	 * the service library is done with it */
+	rsc->active = cmd; /* only one op at a time for a rsc */
 	cmd = NULL;
-	rsc->active = 1;
 
 exec_done:
 	if (cmd) {
 		cmd_finalize(cmd, rsc);
 	}
+	return TRUE;
+}
+
+static gboolean
+lrmd_rsc_execute(lrmd_rsc_t *rsc)
+{
+	lrmd_cmd_t *cmd = NULL;
+	CRM_CHECK(rsc != NULL, return FALSE);
+
+	if (rsc->active) {
+		crm_trace("%s is still active", rsc->rsc_id);
+		return TRUE;
+	}
+
+	if (rsc->pending_ops) {
+		GList *first = rsc->pending_ops;
+		cmd = first->data;
+		if (cmd->delay_id) {
+			crm_trace("Command %s %s was asked to run too early, waiting for start_delay timeout of %dms",
+				cmd->rsc_id, cmd->action, cmd->start_delay);
+			return TRUE;
+		}
+		rsc->pending_ops = g_list_remove_link(rsc->pending_ops, first);
+		g_list_free_1(first);
+	}
+
+	if (!cmd) {
+		crm_trace("Nothing further to do for %s", rsc->rsc_id);
+		return TRUE;
+	}
+
+	if (safe_str_eq(rsc->class, "stonith")) {
+		lrmd_rsc_execute_stonith(rsc, cmd);
+	} else {
+		lrmd_rsc_execute_service_lib(rsc, cmd);
+	}
+
 	return TRUE;
 }
 
@@ -428,6 +482,7 @@ free_rsc(gpointer data)
 {
 	GListPtr gIter = NULL;
 	lrmd_rsc_t *rsc = data;
+	int is_stonith = safe_str_eq(rsc->class, "stonith");
 
 	for (gIter = rsc->pending_ops; gIter != NULL; gIter = gIter->next) {
 		lrmd_cmd_t *cmd = gIter->data;
@@ -441,11 +496,17 @@ free_rsc(gpointer data)
 
 	for (gIter = rsc->recurring_ops; gIter != NULL; gIter = gIter->next) {
 		lrmd_cmd_t *cmd = gIter->data;
-		/* this command is already handed off to service library,
-		 * let service library cancel it and tell us via the callback
-		 * when it is cancelled. The rsc can be safely destroyed
-		 * even if we are waiting for the cancel result */
-		services_action_cancel(rsc->rsc_id, cmd->action, cmd->interval);
+		if (is_stonith) {
+			cmd->rc = lrmd_ok;
+			cmd->lrmd_op_status = PCMK_LRM_OP_CANCELLED;
+			cmd_finalize(cmd, NULL);
+		} else {
+			/* This command is already handed off to service library,
+			 * let service library cancel it and tell us via the callback
+			 * when it is cancelled. The rsc can be safely destroyed
+			 * even if we are waiting for the cancel result */
+			services_action_cancel(rsc->rsc_id, cmd->action, cmd->interval);
+		}
 	}
 	/* frees list, but not list elements. */
 	g_list_free(rsc->recurring_ops);
@@ -528,6 +589,62 @@ process_lrmd_rsc_exec(lrmd_client_t *client, xmlNode *request)
 }
 
 static int
+cancel_op(const char *rsc_id, const char *action, int interval)
+{
+	GListPtr gIter = NULL;
+	lrmd_rsc_t *rsc = g_hash_table_lookup(rsc_list, rsc_id);
+
+	/* How to cancel an action.
+	 * 1. Check pending ops list, if it hasn't been handed off
+	 *    to the service library or stonith recurring list remove
+	 *    it there and that will stop it.
+	 * 2. If it isn't in the pending ops list, then its either a
+	 *    recurring op in the stonith recurring list, or the service
+	 *    library's recurring list.  Stop it there
+	 * 3. If not found in any lists, then this operation has either
+	 *    been executed already and is not a recurring operation, or
+	 *    never existed.
+	 */
+	if (!rsc) {
+		return lrmd_err_unknown_rsc;
+	}
+
+	for (gIter = rsc->pending_ops; gIter != NULL; gIter = gIter->next) {
+		lrmd_cmd_t *cmd = gIter->data;
+
+		if (safe_str_eq(cmd->action, action) && cmd->interval == interval) {
+			cmd->rc = lrmd_ok;
+			cmd->lrmd_op_status = PCMK_LRM_OP_CANCELLED;
+			cmd_finalize(cmd, rsc);
+			return lrmd_ok;
+		}
+	}
+
+	if (safe_str_eq(rsc->class, "stonith")) {
+		/* The service library does not handle stonith operations.
+		 * We have to handle recurring stonith opereations ourselves. */
+		for (gIter = rsc->recurring_ops; gIter != NULL; gIter = gIter->next) {
+			lrmd_cmd_t *cmd = gIter->data;
+
+			if (safe_str_eq(cmd->action, action) && cmd->interval == interval) {
+				cmd->rc = lrmd_ok;
+				cmd->lrmd_op_status = PCMK_LRM_OP_CANCELLED;
+				cmd_finalize(cmd, rsc);
+				return lrmd_ok;
+			}
+		}
+	} else if (services_action_cancel(rsc_id, action, interval) == TRUE) {
+		/* The service library will tell the action_complete callback function
+		 * this action was cancelled, which will destroy the cmd and remove
+		 * it from the recurring_op list. Do not do that in this function
+		 * if the service library says it cancelled it. */
+		return lrmd_ok;
+	}
+
+	return lrmd_err_unknown_operation;
+}
+
+static int
 process_lrmd_rsc_cancel(lrmd_client_t *client, xmlNode *request)
 {
 	xmlNode *rsc_xml = get_xpath_object("//"F_LRMD_RSC, request, LOG_ERR);
@@ -541,11 +658,7 @@ process_lrmd_rsc_cancel(lrmd_client_t *client, xmlNode *request)
 		return lrmd_err_missing;
 	}
 
-	if (services_action_cancel(rsc_id, action, interval)) {
-		return lrmd_ok;
-	}
-
-	return lrmd_err_unknown_operation;
+	return cancel_op(rsc_id, action, interval);
 }
 
 void

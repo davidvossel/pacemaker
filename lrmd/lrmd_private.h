@@ -33,10 +33,18 @@ typedef struct lrmd_rsc_s {
 	char *provider;
 	char *type;
 
-	int active;
+	/* NEVER dereference this pointer,
+	 * It simply exists as a switch to let us know
+	 * when the currently active operation has completed */
+	void *active;
 
+	/* Operations in this list
+	 * have not been executed yet. */
 	GList *pending_ops;
+	/* Operations in this list are recurring operations
+	 * that have been handed off from the pending ops list. */
 	GList *recurring_ops;
+
 	crm_trigger_t *work;
 } lrmd_rsc_t;
 
