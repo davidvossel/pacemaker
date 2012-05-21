@@ -297,12 +297,20 @@ class Tests:
 			"resource-agent name=\"fence_pcmk\"")
 
 		### get agents ###
-		test = self.new_test("list_agents", "Retrieve list of available resource agents, verifies at least one agent exists.")
-		test.add_cmd_check_stdout("-c list_agents ", "Dummy")
+		test = self.new_test("check_agents", "Retrieve list of available resource agents, verifies at least one of each type exists.")
+		test.add_cmd_check_stdout("-c list_agents ", "Dummy")       ### ocf ###
+		test.add_cmd_check_stdout("-c list_agents -C ocf", "Dummy") ### ocf ###
 
-		### get stonith agents  ###
-		test = self.new_test("check_stonith_agents", "Retrieve list of available resource agents, verifies fence_pcmk exists")
-		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk")
+		test.add_sys_cmd("cp", "/usr/share/pacemaker/tests/cts/LSBDummy /etc/init.d/LSBDummy")
+		test.add_cmd_check_stdout("-c list_agents ", "LSBDummy")       ### init.d ###
+		test.add_cmd_check_stdout("-c list_agents -C lsb", "LSBDummy") ### init.d ###
+		test.add_sys_cmd("rm", "-f /etc/init.d/LSBDummy")
+
+		test.add_cmd_check_stdout("-c list_agents ", "rsyslog")           ### systemd ###
+		test.add_cmd_check_stdout("-c list_agents -C systemd", "rsyslog") ### systemd ###
+
+		test.add_cmd_check_stdout("-c list_agents -C stonith", "fence_pcmk") ### stonith ###
+		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk")           ### stonith ###
 
 		### get ocf providers  ###
 		test = self.new_test("list_ocf_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.")

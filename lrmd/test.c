@@ -70,6 +70,7 @@ static struct {
 	int cancel_call_id;
 	int event_version;
 	int no_wait;
+	int no_connect;
 	const char *api_call;
 	const char *rsc_id;
 	const char *provider;
@@ -149,7 +150,6 @@ try_connect(void)
 	int i = 0;
 	int rc = 0;
 
-	lrmd_conn = lrmd_api_new();
 
 	for (i = 0; i < tries; i++) {
 		rc = lrmd_conn->cmds->connect(lrmd_conn, "lrmd_ctest", NULL);
@@ -172,8 +172,9 @@ start_test(gpointer user_data)
 {
 	int rc = 0;
 
-	try_connect();
-
+	if (!options.no_connect) {
+		try_connect();
+	}
 	lrmd_conn->cmds->set_callback(lrmd_conn, NULL, read_events);
 
 	if (options.timeout) {
@@ -377,6 +378,13 @@ int main(int argc, char ** argv)
 	}
 
 
+	if (!options.listen &&
+		(safe_str_eq(options.api_call, "metadata") ||
+		 safe_str_eq(options.api_call, "list_agents") ||
+		 safe_str_eq(options.api_call, "list_ocf_providers"))) {
+		options.no_connect = 1;
+	}
+
 	crm_log_init("lrmd_ctest", LOG_INFO, TRUE, options.verbose ? TRUE : FALSE, argc, argv);
 
 	/* if we can't perform an api_call or listen for events, 
@@ -386,6 +394,7 @@ int main(int argc, char ** argv)
 		return 0;
 	}
 
+	lrmd_conn = lrmd_api_new();
 	trig = mainloop_add_trigger(G_PRIORITY_HIGH, start_test, NULL);
 	mainloop_set_trigger(trig);
 	mainloop_add_signal(SIGTERM, test_shutdown);
@@ -393,6 +402,6 @@ int main(int argc, char ** argv)
 	crm_info("Starting");
 	mainloop = g_main_new(FALSE);
 	g_main_run(mainloop);
-
+	lrmd_api_delete(lrmd_conn);
 	return 0;
 }

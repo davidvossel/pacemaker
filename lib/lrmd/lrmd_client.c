@@ -570,6 +570,22 @@ list_lsb_agents(lrmd_list_t **resources)
 }
 
 static int
+list_systemd_agents(lrmd_list_t **resources)
+{
+	int rc = 0;
+	GListPtr gIter = NULL;
+	GList *agents = NULL;
+
+	agents = resources_list_agents("systemd", NULL);
+	for (gIter = agents; gIter != NULL; gIter = gIter->next) {
+		*resources = lrmd_list_add(*resources, (const char *) gIter->data);
+		rc++;
+	}
+	g_list_free_full(agents, free);
+	return rc;
+}
+
+static int
 list_ocf_agents(lrmd_list_t **resources)
 {
 	int rc = 0;
@@ -605,10 +621,13 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources, const char *class)
 		rc += list_ocf_agents(resources);
 	} else if (safe_str_eq(class, "lsb")) {
 		rc += list_lsb_agents(resources);
+	} else if (safe_str_eq(class, "systemd")) {
+		rc += list_systemd_agents(resources);
 	} else if (safe_str_eq(class, "stonith")) {
 		rc += list_stonith_agents(resources);
 	} else if (!class) {
 		rc += list_ocf_agents(resources);
+		rc += list_systemd_agents(resources);
 		rc += list_lsb_agents(resources);
 		rc += list_stonith_agents(resources);
 	} else {
