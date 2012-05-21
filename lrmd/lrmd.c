@@ -377,7 +377,15 @@ lrmd_rsc_execute_stonith(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 static int
 lrmd_rsc_execute_service_lib(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 {
+	const char *action_name = cmd->action;
 	svc_action_t *action = NULL;
+
+	if (safe_str_eq(action_name, "monitor") &&
+		(safe_str_eq(rsc->class, "lsb") ||
+		 safe_str_eq(rsc->class, "service") ||
+		 safe_str_eq(rsc->class, "systemd"))) {
+		action_name = "status";
+	}
 
 	crm_trace("Creating action, resource:%s action:%s class:%s provider:%s agent:%s",
 		rsc->rsc_id,
@@ -390,7 +398,7 @@ lrmd_rsc_execute_service_lib(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 		rsc->class,
 		rsc->provider,
 		rsc->type,
-		cmd->action,
+		action_name,
 		cmd->interval,
 		cmd->timeout,
 		cmd->params);

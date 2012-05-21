@@ -43,6 +43,8 @@ extern "C" {
 
 #define SYSTEMCTL "/bin/systemctl"
 
+#define SERVICE_SCRIPT "/sbin/service"
+
 enum lsb_exitcode {
     PCMK_LSB_OK = 0,
     PCMK_LSB_UNKNOWN_ERROR = 1,

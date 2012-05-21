@@ -623,6 +623,9 @@ lrmd_api_list_agents(lrmd_t *lrmd, lrmd_list_t **resources, const char *class)
 		rc += list_lsb_agents(resources);
 	} else if (safe_str_eq(class, "systemd")) {
 		rc += list_systemd_agents(resources);
+	} else if (safe_str_eq(class, "service")) {
+		rc += list_lsb_agents(resources);
+		rc += list_systemd_agents(resources);
 	} else if (safe_str_eq(class, "stonith")) {
 		rc += list_stonith_agents(resources);
 	} else if (!class) {

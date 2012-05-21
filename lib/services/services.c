@@ -124,6 +124,11 @@ svc_action_t *resources_action_create(
             goto return_error;
         }
         op->opaque->args[2] = service;
+    } else if(strcasecmp(standard, "service") == 0) {
+        op->opaque->exec = strdup(SERVICE_SCRIPT);
+        op->opaque->args[0] = strdup(SERVICE_SCRIPT);
+        op->opaque->args[1] = strdup(agent);
+        op->opaque->args[2] = strdup(action);
     } else {
         crm_err("Unknown resource standard: %s", standard);
         services_action_free(op);
@@ -305,8 +310,12 @@ resources_list_standards(void)
 #ifdef __linux__
     standards = g_list_append(standards, strdup("ocf"));
     standards = g_list_append(standards, strdup("lsb"));
-    if (g_file_test(SYSTEMCTL, G_FILE_TEST_IS_REGULAR))
+    if (g_file_test(SYSTEMCTL, G_FILE_TEST_IS_REGULAR)) {
         standards = g_list_append(standards, strdup("systemd"));
+	}
+    if (g_file_test(SERVICE_SCRIPT, G_FILE_TEST_IS_REGULAR)) {
+        standards = g_list_append(standards, strdup("service"));
+	}
 #endif
 #ifdef WIN32
     standards = g_list_append(standards, strdup("windows"));

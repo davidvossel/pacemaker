@@ -53,8 +53,8 @@ class Test:
 		)
 
 	def start_environment(self):
-		### make sure nothing we are in control here ###
-		cmd = shlex.split("killall -q -9 stonithd lrmd lt-lrmd")
+		### make sure nothing we are still in control here ###
+		cmd = shlex.split("killall -q -9 stonithd lrmd lt-lrmd lrmd_test lt-lrmd_test")
 		test = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 		test.wait()
 
@@ -90,8 +90,8 @@ class Test:
 	def get_exitcode(self):
 		return self.result_exitcode
 
-	def print_result(self):
-		print "    %s" % self.result_txt
+	def print_result(self, filler):
+		print "%s%s" % (filler, self.result_txt)
 
 	def run_cmd(self, args):
 		cmd = shlex.split(args['args'])
@@ -110,29 +110,36 @@ class Test:
 			print "STDOUT string '%s' was not found in cmd output" % (args['stdout_match'])
 
 		if self.verbose:
-			print "    %s" % output
+			print "%s" % output
 
 		return test.returncode;
 
 	def run(self):
 		res = 0
 		i = 1
-		print "\n--- BEGIN LRMD TEST %s " % self.name
 		self.start_environment()
+
+		if self.verbose:
+			print "\n--- START TEST - %s" % self.name
+
 		self.result_txt = "SUCCESS - '%s'" % (self.name)
 		self.result_exitcode = 0
 		for cmd in self.cmds:
 			res = self.run_cmd(cmd)
 			if res != cmd['expected_exitcode']:
-				print "Iteration %d FAILED - pid rc %d expected rc %d - cmd args '%s'" % (i, res, cmd['expected_exitcode'], cmd['args'])
+				if self.verbose:
+					print "Iteration %d FAILED - pid rc %d expected rc %d - cmd args '%s'" % (i, res, cmd['expected_exitcode'], cmd['args'])
 				self.result_txt = "FAILURE - '%s' failed on cmd iteration %d" % (self.name, i)
 				self.result_exitcode = -1
 				break
 			else:
-				print "Iteration %d SUCCESS" % (i)
+				if self.verbose:
+					print "Iteration %d SUCCESS" % (i)
 			i = i + 1
 		self.clean_environment()
-		print "--- END LRMD '%s' \n" % (self.name)
+		print self.result_txt
+		if self.verbose:
+			print "--- END TEST - %s\n" % self.name
 
 		self.executed = 1
 		return res
@@ -149,10 +156,28 @@ class Tests:
 		self.tests.append(test)
 		return test
 
+	def setup_test_environment(self):
+		### Make fake systemd daemon and unit file ###
+		dummy_daemon = "#!/bin/bash\nwhile true\ndo\nsleep 5\ndone"
+		dummy_service_file = ("[Unit]\n"
+			"Description=Dummy Resource\n"
+			"[Service]\n"
+			"Type=simple\n"
+			"ExecStart=/usr/sbin/lrmd_dummy_daemon\n")
+		os.system("cat <<-END >>/usr/sbin/lrmd_dummy_daemon\n%s\nEND" % (dummy_daemon))
+		os.system("cat <<-END >>/lib/systemd/system/lrmd_dummy_daemon.service\n%s\nEND" % (dummy_service_file))
+		os.system("chmod u+x /usr/sbin/lrmd_dummy_daemon")
+		os.system("systemctl daemon-reload")
+
+	def cleanup_test_environment(self):
+		os.system("rm -f /lib/systemd/system/lrmd_dummy_daemon.service")
+		os.system("rm -f /usr/sbin/lrmd_dummy_daemon")
+		os.system("systemctl daemon-reload")
+
 	### These are tests that should apply to all resource classes ###
 	def build_generic_tests(self):
 
-		rsc_classes = ["ocf", "lsb", "stonith"]
+		rsc_classes = ["ocf", "lsb", "stonith", "systemd", "service"]
 		common_cmds = {
 			"ocf_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C ocf -P pacemaker -T Dummy",
 			"ocf_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
@@ -167,6 +192,31 @@ class Tests:
 			"ocf_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
 			"ocf_cancel_event"  : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ",
 
+			"systemd_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C systemd -T lrmd_dummy_daemon",
+			"systemd_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"systemd_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
+			"systemd_unreg_event"   : "-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"systemd_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
+			"systemd_start_event"   : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"systemd_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
+			"systemd_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"systemd_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"systemd_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000",
+			"systemd_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"systemd_cancel_event"  : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ",
+
+			"service_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C service -T lrmd_dummy_daemon",
+			"service_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"service_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
+			"service_unreg_event"   : "-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\"",
+			"service_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
+			"service_start_event"   : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"service_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
+			"service_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
+			"service_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"service_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000",
+			"service_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"service_cancel_event"  : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ",
 
 			"lsb_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C lsb -T \"/usr/share/pacemaker/tests/cts/LSBDummy\"",
 			"lsb_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
@@ -176,11 +226,10 @@ class Tests:
 			"lsb_start_event"   : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
 			"lsb_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
 			"lsb_stop_event"    : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:stop rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
-			"lsb_monitor_line"  : "-c exec -r \"test_rsc\" -a \"status\" -i \"1000\" -t 1000",
+			"lsb_monitor_line"  : "-c exec -r \"test_rsc\" -a status -i \"1000\" -t 1000",
 			"lsb_monitor_event" : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:status rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000",
 			"lsb_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"status\" -i \"1000\" -t \"1000\" ",
 			"lsb_cancel_event"  : "-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:status rc:0 exec_rc:OCF_OK op_status:OP_CANCELLED\" ",
-
 
 			"stonith_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C stonith -P pacemaker -T fence_pcmk",
 			"stonith_reg_event"     : "-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ",
@@ -236,6 +285,7 @@ class Tests:
 
 	### These are tests that target specific cases ###
 	def build_custom_tests(self):
+
 		### start timeout test  ###
 		test = self.new_test("start_timeout", "Register a test, then start with a 1ms timeout period.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
@@ -263,7 +313,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 
 		### monitor fail ###
-		test = self.new_test("monitor_fail_test", "Register a test, the start, monitor a few times, then make the monitor fail.")
+		test = self.new_test("monitor_fail_ocf", "Register a test, the start, monitor a few times, then make the monitor fail.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
 			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
 		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
@@ -275,6 +325,27 @@ class Tests:
 		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
 		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
 		test.add_sys_cmd("rm", "-f /var/run/Dummy-test_rsc.state")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_DONE\" -t 2000")
+		test.add_cmd("-c cancel -r \"test_rsc\" -a \"monitor\" -i \"100\" -t \"1000\" "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_CANCELLED\" ")
+		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_DONE\" -t 1000")
+		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:1 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+
+
+		test = self.new_test("monitor_fail_systemd", "Register a test, the start, monitor a few times, then make the monitor fail.")
+		test.add_cmd("-c register_rsc -r \"test_rsc\" -C systemd -T lrmd_dummy_daemon -t 1000 "
+			"-l \"NEW_EVENT event_type:0 rsc_id:test_rsc action:none rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:start rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"monitor\" -i \"100\" -t 1000 "
+			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" ")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
+		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_OK op_status:OP_DONE\" -t 2000")
+		test.add_sys_cmd("killall", "-q -9 lrmd_dummy_daemon")
 		test.add_cmd("-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_DONE\" -t 2000")
 		test.add_cmd("-c cancel -r \"test_rsc\" -a \"monitor\" -i \"100\" -t \"1000\" "
 			"-l \"NEW_EVENT event_type:2 rsc_id:test_rsc action:monitor rc:0 exec_rc:OCF_NOT_RUNNING op_status:OP_CANCELLED\" ")
@@ -329,6 +400,11 @@ class Tests:
 				test.run()
 				break;
 
+	def run_tests_matching(self, pattern):
+		for test in self.tests:
+			if test.name.count(pattern) != 0:
+				test.run()
+
 	def run_tests(self):
 		for test in self.tests:
 			test.run()
@@ -337,16 +413,19 @@ class Tests:
 		failures = 0;
 		success = 0;
 		print "\n\n======= FINAL RESULTS =========="
-		print "\n--- INDIVIDUAL TEST RESULTS:"
+		print "\n--- FAILURE RESULTS:"
 		for test in self.tests:
 			if test.executed == 0:
 				continue
 
-			test.print_result()
 			if test.get_exitcode() != 0:
 				failures = failures + 1
+				test.print_result("    ")
 			else:
 				success = success + 1
+
+		if failures == 0:
+			print "    None"
 
 		print "\n--- TOTALS\n    Pass:%d\n    Fail:%d\n" % (success, failures)
 
@@ -376,17 +455,23 @@ class TestOptions:
 			elif args[i] == "-r" or args[i] == "--run-only":
 				self.options['run-only'] = args[i+1]
 				skip = 1
+			elif args[i] == "-p" or args[i] == "--run-only-pattern":
+				self.options['run-only-pattern'] = args[i+1]
+				skip = 1
 
 	def show_usage(self):
 		print "usage: " + sys.argv[0] + " [options]"
 		print "If no options are provided, all tests will run"
 		print "Options:"
-		print "\t [--help | -h]                     Show usage"
-		print "\t [--list-tests | -l]               Print out all registered tests."
-		print "\t [--run-only | -r 'testname']      Run a specific test"
-		print "\t [--verbose | -V]      Verbose output"
-		print "\n\tExample: "
+		print "\t [--help | -h]                        Show usage"
+		print "\t [--list-tests | -l]                  Print out all registered tests."
+		print "\t [--run-only | -r 'testname']         Run a specific test"
+		print "\t [--verbose | -V]                     Verbose output"
+		print "\t [--run-only-pattern | -p 'string']   Run only tests containing the string value"
+		print "\n\tExample: Run only the test 'start_top'"
 		print "\t\t python ./regression.py --run-only start_stop"
+		print "\n\tExample: Run only the tests with the string 'systemd' present in them"
+		print "\t\t python ./regression.py --run-only-pattern systemd"
 
 
 def main(argv):
@@ -399,17 +484,23 @@ def main(argv):
 	tests = Tests(lrmd_loc, test_loc, o.options['verbose'])
 	tests.build_generic_tests()
 	tests.build_custom_tests()
+	tests.setup_test_environment()
 
 	if o.options['list-tests']:
 		tests.print_list()
 	elif o.options['show-usage']:
 		o.show_usage()
+	elif o.options['run-only-pattern'] != "":
+		tests.run_tests_matching(o.options['run-only-pattern'])
+		tests.print_results()
 	elif o.options['run-only'] != "":
 		tests.run_single(o.options['run-only'])
 		tests.print_results()
 	else:
 		tests.run_tests()
 		tests.print_results()
+
+	tests.cleanup_test_environment()
 
 if __name__=="__main__":
 	main(sys.argv)
