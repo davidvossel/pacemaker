@@ -275,4 +275,18 @@ struct lrmd_s {
 	void *private;
 };
 
+static inline const char *
+lrmd_callback_event2str(enum lrmd_callback_event type)
+{
+	switch (type) {
+	case lrmd_event_register:
+		return "register";
+	case lrmd_event_unregister:
+		return "unregister";
+	case lrmd_event_exec_complete:
+		return "exec_complete";
+	}
+	return "unknown";
+}
+
 #endif

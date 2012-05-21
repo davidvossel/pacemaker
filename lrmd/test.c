@@ -92,12 +92,12 @@ static char event_buf_v0[1024];
 	} \
 
 #define report_event(event)	\
-	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%d rsc_id:%s action:%s rc:%d exec_rc:%s op_status:%s", \
-		event->type,	\
+	snprintf(event_buf_v0, sizeof(event_buf_v0), "NEW_EVENT event_type:%s rsc_id:%s action:%s rc:%d exec_rc:%d op_status:%s", \
+		lrmd_callback_event2str(event->type),	\
 		event->rsc_id,	\
 		event->action ? event->action : "none",	\
 		event->rc,	\
-		services_ocf_exitcode_str(event->exec_rc),	\
+		event->exec_rc,	\
 		services_lrm_status_str(event->lrmd_op_status));	\
 	crm_info("%s", event_buf_v0);;
 

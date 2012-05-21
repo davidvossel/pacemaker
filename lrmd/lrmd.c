@@ -374,18 +374,23 @@ lrmd_rsc_execute_stonith(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 	return rc;
 }
 
-static int
-lrmd_rsc_execute_service_lib(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
+static const char *
+normalize_action_name(lrmd_rsc_t *rsc, const char *action)
 {
-	const char *action_name = cmd->action;
-	svc_action_t *action = NULL;
-
-	if (safe_str_eq(action_name, "monitor") &&
+	if (safe_str_eq(action, "monitor") &&
 		(safe_str_eq(rsc->class, "lsb") ||
 		 safe_str_eq(rsc->class, "service") ||
 		 safe_str_eq(rsc->class, "systemd"))) {
-		action_name = "status";
+		return "status";
 	}
+	return action;
+}
+
+
+static int
+lrmd_rsc_execute_service_lib(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
+{
+	svc_action_t *action = NULL;
 
 	crm_trace("Creating action, resource:%s action:%s class:%s provider:%s agent:%s",
 		rsc->rsc_id,
@@ -398,7 +403,7 @@ lrmd_rsc_execute_service_lib(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 		rsc->class,
 		rsc->provider,
 		rsc->type,
-		action_name,
+		normalize_action_name(rsc, cmd->action),
 		cmd->interval,
 		cmd->timeout,
 		cmd->params);
@@ -634,7 +639,7 @@ cancel_op(const char *rsc_id, const char *action, int interval)
 				return lrmd_ok;
 			}
 		}
-	} else if (services_action_cancel(rsc_id, action, interval) == TRUE) {
+	} else if (services_action_cancel(rsc_id, normalize_action_name(rsc, action), interval) == TRUE) {
 		/* The service library will tell the action_complete callback function
 		 * this action was cancelled, which will destroy the cmd and remove
 		 * it from the recurring_op list. Do not do that in this function
