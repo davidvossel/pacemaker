@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA.
+
 import os
 import sys
 import subprocess
@@ -53,7 +54,7 @@ class Test:
 		)
 
 	def start_environment(self):
-		### make sure nothing we are still in control here ###
+		### make sure we are in full control here ###
 		cmd = shlex.split("killall -q -9 stonithd lrmd lt-lrmd lrmd_test lt-lrmd_test")
 		test = subprocess.Popen(cmd, stdout=subprocess.PIPE)
 		test.wait()
@@ -61,7 +62,7 @@ class Test:
 		self.stonith_process = subprocess.Popen(shlex.split("/usr/libexec/pacemaker/stonithd -s"))
 		self.lrmd_process = subprocess.Popen(self.daemon_location)
 
-		time.sleep(0.5)
+		time.sleep(1)
 
 	def clean_environment(self):
 		if self.lrmd_process:
@@ -166,14 +167,29 @@ class Tests:
 			"[Service]\n"
 			"Type=simple\n"
 			"ExecStart=/usr/sbin/lrmd_dummy_daemon\n")
+		dummy_fence_agent = ("#!/usr/bin/python\n"
+			"import sys\n"
+			"def main():\n"
+			"    for line in sys.stdin.readlines():\n"
+			"        if line.count(\"monitor\") > 0:\n"
+			"            sys.exit(0)\n"
+			"    sys.exit(-1)\n"
+			"if __name__ == \"__main__\":\n"
+			"    main()\n")
+
 		os.system("cat <<-END >>/usr/sbin/lrmd_dummy_daemon\n%s\nEND" % (dummy_daemon))
 		os.system("cat <<-END >>/lib/systemd/system/lrmd_dummy_daemon.service\n%s\nEND" % (dummy_service_file))
 		os.system("chmod u+x /usr/sbin/lrmd_dummy_daemon")
+
+		os.system("cat <<-END >>/usr/sbin/fence_dummy_monitor\n%s\nEND" % (dummy_fence_agent))
+		os.system("chmod 711 /usr/sbin/fence_dummy_monitor")
+
 		os.system("systemctl daemon-reload")
 
 	def cleanup_test_environment(self):
 		os.system("rm -f /lib/systemd/system/lrmd_dummy_daemon.service")
 		os.system("rm -f /usr/sbin/lrmd_dummy_daemon")
+		os.system("rm -f /usr/sbin/fence_dummy_monitor")
 		os.system("systemctl daemon-reload")
 
 	### These are tests that should apply to all resource classes ###
@@ -233,7 +249,7 @@ class Tests:
 			"lsb_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"status\" -i \"1000\" -t \"1000\" ",
 			"lsb_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:status rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
 
-			"stonith_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C stonith -P pacemaker -T fence_pcmk",
+			"stonith_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C stonith -P pacemaker -T fence_dummy_monitor",
 			"stonith_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ",
 			"stonith_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
 			"stonith_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
@@ -366,8 +382,8 @@ class Tests:
 
 		### get stonith metadata ###
 		test = self.new_test("get_stonith_metadata", "Retrieve stonith metadata for a resource")
-		test.add_cmd_check_stdout("-c metadata -C \"stonith\" -P \"pacemaker\" -T \"fence_pcmk\"",
-			"resource-agent name=\"fence_pcmk\"")
+		test.add_cmd_check_stdout("-c metadata -C \"stonith\" -P \"pacemaker\" -T \"fence_dummy_monitor\"",
+			"resource-agent name=\"fence_dummy_monitor\"")
 
 		### get agents ###
 		test = self.new_test("check_agents", "Retrieve list of available resource agents, verifies at least one of each type exists.")
@@ -382,8 +398,8 @@ class Tests:
 		test.add_cmd_check_stdout("-c list_agents ", "rsyslog")           ### systemd ###
 		test.add_cmd_check_stdout("-c list_agents -C systemd", "rsyslog") ### systemd ###
 
-		test.add_cmd_check_stdout("-c list_agents -C stonith", "fence_pcmk") ### stonith ###
-		test.add_cmd_check_stdout("-c list_agents ", "fence_pcmk")           ### stonith ###
+		test.add_cmd_check_stdout("-c list_agents -C stonith", "fence_dummy_monitor") ### stonith ###
+		test.add_cmd_check_stdout("-c list_agents ", "fence_dummy_monitor")           ### stonith ###
 
 		### get ocf providers  ###
 		test = self.new_test("list_ocf_providers", "Retrieve list of available resource providers, verifies pacemaker is a provider.")
