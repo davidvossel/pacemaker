@@ -416,6 +416,7 @@ lrmd_rsc_execute_service_lib(lrmd_rsc_t *rsc, lrmd_cmd_t *cmd)
 	if (!action) {
 		crm_err("Failed to create action, action:%s on resource %s", cmd->action, rsc->rsc_id);
 		cmd->rc = lrmd_err_exec_failed;
+		cmd->lrmd_op_status = PCMK_LRM_OP_ERROR;
 		goto exec_done;
 	}
 
@@ -572,6 +573,7 @@ process_lrmd_rsc_unregister(lrmd_client_t *client, xmlNode *request)
 	} else {
 		crm_info("Resource '%s' not found (%d active resources)",
 			rsc_id, g_hash_table_size(rsc_list));
+		return lrmd_err_unknown_rsc;
 	}
 
 	return rc;
@@ -693,7 +695,10 @@ process_lrmd_message(lrmd_client_t *client, xmlNode *request)
 		do_reply = 1;
 	} else if (crm_str_eq(op, LRMD_OP_RSC_UNREG, TRUE)) {
 		rc = process_lrmd_rsc_unregister(client, request);
-		do_notify = 1;
+		/* don't notify anyone about failed un-registers */
+		if (rc == lrmd_ok) {
+			do_notify = 1;
+		}
 		do_reply = 1;
 	} else if (crm_str_eq(op, LRMD_OP_RSC_EXEC, TRUE)) {
 		rc = process_lrmd_rsc_exec(client, request);

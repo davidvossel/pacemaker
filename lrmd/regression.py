@@ -152,6 +152,74 @@ class Tests:
 		self.tests = []
 		self.verbose = verbose
 
+		self.rsc_classes = ["ocf", "lsb", "stonith", "systemd", "service"]
+		self.common_cmds = {
+			"ocf_reg_line"      : "-c register_rsc -r ocf_test_rsc -t 1000 -C ocf -P pacemaker -T Dummy",
+			"ocf_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:ocf_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"ocf_unreg_line"    : "-c unregister_rsc -r \"ocf_test_rsc\" -t 1000",
+			"ocf_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:ocf_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"ocf_start_line"    : "-c exec -r \"ocf_test_rsc\" -a \"start\" -t 1000 ",
+			"ocf_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:ocf_test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"ocf_stop_line"     : "-c exec -r \"ocf_test_rsc\" -a \"stop\" -t 1000 ",
+			"ocf_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:ocf_test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"ocf_monitor_line"  : "-c exec -r \"ocf_test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"ocf_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:ocf_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
+			"ocf_cancel_line"   : "-c cancel -r \"ocf_test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"ocf_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:ocf_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
+
+			"systemd_reg_line"      : "-c register_rsc -r systemd_test_rsc -t 1000 -C systemd -T lrmd_dummy_daemon",
+			"systemd_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:systemd_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"systemd_unreg_line"    : "-c unregister_rsc -r \"systemd_test_rsc\" -t 1000",
+			"systemd_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:systemd_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"systemd_start_line"    : "-c exec -r \"systemd_test_rsc\" -a \"start\" -t 1000 ",
+			"systemd_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:systemd_test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"systemd_stop_line"     : "-c exec -r \"systemd_test_rsc\" -a \"stop\" -t 1000 ",
+			"systemd_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:systemd_test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"systemd_monitor_line"  : "-c exec -r \"systemd_test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"systemd_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:systemd_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
+			"systemd_cancel_line"   : "-c cancel -r \"systemd_test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"systemd_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:systemd_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
+
+			"service_reg_line"      : "-c register_rsc -r service_test_rsc -t 1000 -C service -T lrmd_dummy_daemon",
+			"service_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:service_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"service_unreg_line"    : "-c unregister_rsc -r \"service_test_rsc\" -t 1000",
+			"service_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:service_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"service_start_line"    : "-c exec -r \"service_test_rsc\" -a \"start\" -t 1000 ",
+			"service_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:service_test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"service_stop_line"     : "-c exec -r \"service_test_rsc\" -a \"stop\" -t 1000 ",
+			"service_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:service_test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"service_monitor_line"  : "-c exec -r \"service_test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"service_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:service_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
+			"service_cancel_line"   : "-c cancel -r \"service_test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"service_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:service_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
+
+			"lsb_reg_line"      : "-c register_rsc -r lsb_test_rsc -t 1000 -C lsb -T \"/usr/share/pacemaker/tests/cts/LSBDummy\"",
+			"lsb_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:lsb_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"lsb_unreg_line"    : "-c unregister_rsc -r \"lsb_test_rsc\" -t 1000",
+			"lsb_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:lsb_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"lsb_start_line"    : "-c exec -r \"lsb_test_rsc\" -a \"start\" -t 1000 ",
+			"lsb_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:lsb_test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"lsb_stop_line"     : "-c exec -r \"lsb_test_rsc\" -a \"stop\" -t 1000 ",
+			"lsb_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:lsb_test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"lsb_monitor_line"  : "-c exec -r \"lsb_test_rsc\" -a status -i \"1000\" -t 1000",
+			"lsb_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:lsb_test_rsc action:status rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
+			"lsb_cancel_line"   : "-c cancel -r \"lsb_test_rsc\" -a \"status\" -i \"1000\" -t \"1000\" ",
+			"lsb_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:lsb_test_rsc action:status rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
+
+			"stonith_reg_line"      : "-c register_rsc -r stonith_test_rsc -t 1000 -C stonith -P pacemaker -T fence_dummy_monitor",
+			"stonith_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:stonith_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"stonith_unreg_line"    : "-c unregister_rsc -r \"stonith_test_rsc\" -t 1000",
+			"stonith_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:stonith_test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
+			"stonith_start_line"    : "-c exec -r \"stonith_test_rsc\" -a \"start\" -t 1000 ",
+			"stonith_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:stonith_test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"stonith_stop_line"     : "-c exec -r \"stonith_test_rsc\" -a \"stop\" -t 1000 ",
+			"stonith_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:stonith_test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
+			"stonith_monitor_line"  : "-c exec -r \"stonith_test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
+			"stonith_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:stonith_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 3000",
+			"stonith_cancel_line"   : "-c cancel -r \"stonith_test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
+			"stonith_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:stonith_test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
+		}
+
 	def new_test(self, name, description):
 		test = Test(name, description, self.daemon_location, self.test_tool_location, self.verbose)
 		self.tests.append(test)
@@ -194,74 +262,8 @@ class Tests:
 
 	### These are tests that should apply to all resource classes ###
 	def build_generic_tests(self):
-
-		rsc_classes = ["ocf", "lsb", "stonith", "systemd", "service"]
-		common_cmds = {
-			"ocf_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C ocf -P pacemaker -T Dummy",
-			"ocf_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"ocf_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
-			"ocf_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"ocf_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
-			"ocf_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"ocf_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
-			"ocf_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"ocf_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
-			"ocf_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
-			"ocf_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
-			"ocf_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
-
-			"systemd_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C systemd -T lrmd_dummy_daemon",
-			"systemd_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"systemd_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
-			"systemd_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"systemd_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
-			"systemd_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"systemd_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
-			"systemd_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"systemd_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
-			"systemd_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
-			"systemd_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
-			"systemd_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
-
-			"service_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C service -T lrmd_dummy_daemon",
-			"service_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"service_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
-			"service_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"service_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
-			"service_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"service_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
-			"service_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"service_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
-			"service_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
-			"service_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
-			"service_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
-
-			"lsb_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C lsb -T \"/usr/share/pacemaker/tests/cts/LSBDummy\"",
-			"lsb_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"lsb_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
-			"lsb_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"lsb_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
-			"lsb_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"lsb_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
-			"lsb_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"lsb_monitor_line"  : "-c exec -r \"test_rsc\" -a status -i \"1000\" -t 1000",
-			"lsb_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:status rc:0 exec_rc:0 op_status:OP_DONE\" -t 2000",
-			"lsb_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"status\" -i \"1000\" -t \"1000\" ",
-			"lsb_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:status rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
-
-			"stonith_reg_line"      : "-c register_rsc -r test_rsc -t 1000 -C stonith -P pacemaker -T fence_dummy_monitor",
-			"stonith_reg_event"     : "-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"stonith_unreg_line"    : "-c unregister_rsc -r \"test_rsc\" -t 1000",
-			"stonith_unreg_event"   : "-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\"",
-			"stonith_start_line"    : "-c exec -r \"test_rsc\" -a \"start\" -t 1000 ",
-			"stonith_start_event"   : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"stonith_stop_line"     : "-c exec -r \"test_rsc\" -a \"stop\" -t 1000 ",
-			"stonith_stop_event"    : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ",
-			"stonith_monitor_line"  : "-c exec -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t 1000",
-			"stonith_monitor_event" : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 3000",
-			"stonith_cancel_line"   : "-c cancel -r \"test_rsc\" -a \"monitor\" -i \"1000\" -t \"1000\" ",
-			"stonith_cancel_event"  : "-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_CANCELLED\" ",
-		}
+		rsc_classes = self.rsc_classes
+		common_cmds = self.common_cmds
 
 		### register/unregister tests ###
 		for rsc in rsc_classes:
@@ -279,7 +281,7 @@ class Tests:
 
 		### monitor test ###
 		for rsc in rsc_classes:
-			test = self.new_test("generic_monitor_%s" % (rsc), "Register a test, start, monitor a few times, then stop for %s standard" % (rsc))
+			test = self.new_test("generic_monitor_%s" % (rsc), "Register an agent, start, monitor a few times, then stop for %s standard" % (rsc))
 			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_monitor_line" % (rsc)] + " " + common_cmds["%s_monitor_event" % (rsc)])
@@ -289,7 +291,7 @@ class Tests:
 
 		### monitor cancel test ###
 		for rsc in rsc_classes:
-			test = self.new_test("generic_monitor_cancel_%s" % (rsc), "Register a test, start, monitor a few times, then stop for %s standard" % (rsc))
+			test = self.new_test("generic_monitor_cancel_%s" % (rsc), "Register an agent, start, monitor a few times, then stop for %s standard" % (rsc))
 			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_monitor_line" % (rsc)] + " " + common_cmds["%s_monitor_event" % (rsc)])
@@ -301,49 +303,31 @@ class Tests:
 			test.add_cmd(common_cmds["%s_stop_line" % (rsc)]  + " " + common_cmds["%s_stop_event" % (rsc)])
 			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
 
-	### These are tests that target specific cases ###
-	def build_custom_tests(self):
+	### These are complex tests that involve managing multiple resouces of different types ###
+	def build_multi_rsc_tests(self):
+		common_cmds = self.common_cmds
+		# do not use service and systemd at the same time, it is the same resource.
+		rsc_classes = ["ocf", "lsb", "stonith", "service"]
 
-		### start timeout test  ###
-		test = self.new_test("start_timeout", "Register a test, then start with a 1ms timeout period.")
-		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
-			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
-		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -k \"op_sleep\" -v \"3\" -t 1000 -w")
-		test.add_cmd("-l "
-			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:198 op_status:OP_TIMEOUT\" -t 3000")
-		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
-			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ")
-		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
-			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		### register start monitor stop unregister resources of each type at the same time. ###
+		test = self.new_test("multi_rsc_start_stop_all", "Start monitor and stop resources of each type at the same time")
+		for rsc in rsc_classes:
+			test.add_cmd(common_cmds["%s_reg_line" % (rsc)]   + " " + common_cmds["%s_reg_event" % (rsc)])
+		for rsc in rsc_classes:
+			test.add_cmd(common_cmds["%s_start_line" % (rsc)] + " " + common_cmds["%s_start_event" % (rsc)])
+		for rsc in rsc_classes:
+			test.add_cmd(common_cmds["%s_monitor_line" % (rsc)] + " " + common_cmds["%s_monitor_event" % (rsc)])
+		for rsc in rsc_classes:
+			test.add_cmd(common_cmds["%s_monitor_event" % (rsc)]) ### If this fails, that means the monitor is not being rescheduled ####
+		for rsc in rsc_classes:
+			test.add_cmd(common_cmds["%s_stop_line" % (rsc)]  + " " + common_cmds["%s_stop_event" % (rsc)])
+		for rsc in rsc_classes:
+			test.add_cmd(common_cmds["%s_unreg_line" % (rsc)] + " " + common_cmds["%s_unreg_event" % (rsc)])
 
-		### start delay then stop test ###
-		test = self.new_test("start_delay", "Register a test, then start with start_delay value.")
-		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
-			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
-		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
-		test.add_expected_fail_cmd("-l "
-			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
-		test.add_cmd("-l "
-			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" -t 3000")
-		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
-			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ")
-		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
-			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
-
-		### start delay, but stop before it gets a chance to start.  ###
-		test = self.new_test("start_delay_cancel", "Register a test, then start with start_delay value, but cancel it before execution.")
-		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
-			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
-		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
-		test.add_cmd("-c cancel -r test_rsc -a start -t 1000 "
-			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_CANCELLED\" ")
-		test.add_expected_fail_cmd("-l "
-			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" -t 3000")
-		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
-			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
-
+	### These are tests related to how the lrmd handles failures.  ###
+	def build_negative_tests(self):
 		### monitor fail for ocf resources ###
-		test = self.new_test("monitor_fail_ocf", "Register a test, then start, monitor a few times, then make the monitor fail.")
+		test = self.new_test("monitor_fail_ocf", "Register an agent, then start, monitor a few times, then make the monitor fail.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
 			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
 		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
@@ -364,7 +348,7 @@ class Tests:
 			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
 
 		### monitor fail for systemd resource ###
-		test = self.new_test("monitor_fail_systemd", "Register a test, then start, monitor a few times, then make the monitor fail.")
+		test = self.new_test("monitor_fail_systemd", "Register an agent, then start, monitor a few times, then make the monitor fail.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C systemd -T lrmd_dummy_daemon -t 1000 "
 			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
 		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
@@ -382,6 +366,95 @@ class Tests:
 		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:7 op_status:OP_DONE\" -t 1000")
 		test.add_expected_fail_cmd("-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
 		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### Attempt to invoke non-existent rsc id ###
+		test = self.new_test("invoke_non_existent_rsc", "Attempt to start stop monitor cancel and unregister a non-existent rsc id.")
+		test.add_expected_fail_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:1 op_status:OP_DONE\" ")
+		test.add_expected_fail_cmd("-c exec -r test_rsc -a stop -t 1000"
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_expected_fail_cmd("-c exec -r test_rsc -a monitor -i 1000 -t 1000"
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:monitor rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_expected_fail_cmd("-c cancel -r test_rsc -a start -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_CANCELLED\" ")
+		test.add_expected_fail_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### Register and start a resource that doesn't exist, systemd  ###
+		test = self.new_test("start_uninstalled_systemd", "Register uninstalled agent, try to start.")
+		test.add_cmd("-c register_rsc -r \"test_rsc\" -C systemd -T this_is_fake1234 -t 1000 "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:1 op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### Register and start a resource that doesn't exist, ocf ###
+		test = self.new_test("start_uninstalled_ocf", "Register uninstalled agent, try to start.")
+		test.add_cmd("-c register_rsc -r \"test_rsc\" -C ocf -P pacemaker -T this_is_fake1234 -t 1000 "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:5 op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### Register ocf with non-existent provider  ###
+		test = self.new_test("start_ocf_bad_provider", "Register ocf agent with a non-existent provider.")
+		test.add_cmd("-c register_rsc -r \"test_rsc\" -C ocf -P pancakes -T Dummy -t 1000 "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:5 op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### Register ocf with empty provider field  ###
+		test = self.new_test("start_ocf_no_provider", "Register ocf agent with a no  provider.")
+		test.add_expected_fail_cmd("-c register_rsc -r \"test_rsc\" -C ocf -T Dummy -t 1000 "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_expected_fail_cmd("-c exec -r \"test_rsc\" -a \"start\" -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:-16 exec_rc:0 op_status:OP_ERROR\" ")
+		test.add_expected_fail_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+	### These are tests that target specific cases ###
+	def build_custom_tests(self):
+		### start timeout test  ###
+		test = self.new_test("start_timeout", "Register an agent, then start with a 1ms timeout period.")
+		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_cmd("-c exec -r \"test_rsc\" -a \"start\" -k \"op_sleep\" -v \"3\" -t 1000 -w")
+		test.add_cmd("-l "
+			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:198 op_status:OP_TIMEOUT\" -t 3000")
+		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### start delay then stop test ###
+		test = self.new_test("start_delay", "Register an agent, then start with start_delay value.")
+		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
+		test.add_expected_fail_cmd("-l "
+			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-l "
+			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" -t 3000")
+		test.add_cmd("-c exec -r test_rsc -a stop -t 1000"
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:stop rc:0 exec_rc:0 op_status:OP_DONE\" ")
+		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### start delay, but cancel before it gets a chance to start.  ###
+		test = self.new_test("start_delay_cancel", "Register an agent, then start with start_delay value, but cancel it before execution.")
+		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
+		test.add_cmd("-c cancel -r test_rsc -a start -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_CANCELLED\" ")
+		test.add_expected_fail_cmd("-l "
+			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" -t 3000")
+		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
 			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
 
 		### get metadata ###
@@ -420,8 +493,10 @@ class Tests:
 
 	def print_list(self):
 		print "\n==== %d TESTS FOUND ====" % (len(self.tests))
+		print "%35s - %s" % ("TEST NAME", "TEST DESCRIPTION")
+		print "%35s - %s" % ("--------------------", "--------------------")
 		for test in self.tests:
-			print "%s             - %s" % (test.name, test.description)
+			print "%35s - %s" % (test.name, test.description)
 		print "==== END OF LIST ====\n"
 
 	def run_single(self, name):
@@ -513,8 +588,12 @@ def main(argv):
 	o.build_options(argv)
 
 	tests = Tests(lrmd_loc, test_loc, o.options['verbose'])
+
 	tests.build_generic_tests()
+	tests.build_multi_rsc_tests()
+	tests.build_negative_tests()
 	tests.build_custom_tests()
+
 	tests.setup_test_environment()
 
 	print "Starting ..."

@@ -391,7 +391,16 @@ lrmd_api_register_rsc(lrmd_t *lrmd,
 		enum lrmd_call_options options)
 {
 	int rc = lrmd_ok;
-	xmlNode *data = create_xml_node(NULL, F_LRMD_RSC);
+	xmlNode *data = NULL;
+
+	if (!class || !type || !rsc_id) {
+		return lrmd_err_missing;
+	}
+	if (safe_str_eq(class, "ocf") && !provider) {
+		return lrmd_err_provider_required;
+	}
+
+	data = create_xml_node(NULL, F_LRMD_RSC);
 
 	crm_xml_add(data, F_LRMD_ORIGIN, __FUNCTION__);
 	crm_xml_add(data, F_LRMD_RSC_ID, rsc_id);
