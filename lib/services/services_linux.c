@@ -181,7 +181,7 @@ add_OCF_env_vars(svc_action_t *op)
 
     set_ocf_env("OCF_RA_VERSION_MAJOR", "1", NULL);
     set_ocf_env("OCF_RA_VERSION_MINOR", "0", NULL);
-    set_ocf_env("OCF_ROOT", OCF_ROOT, NULL);
+    set_ocf_env("OCF_ROOT", OCF_ROOT_DIR, NULL);
 
     if (op->rsc) {
         set_ocf_env("OCF_RESOURCE_INSTANCE", op->rsc, NULL);
@@ -457,7 +457,6 @@ GList *
 services_os_get_directory_list(const char *root, gboolean files)
 {
     GList *list = NULL;
-#if __linux__
     struct dirent **namelist;
     int entries = 0, lpc = 0;
     char buffer[PATH_MAX];
@@ -502,7 +501,6 @@ services_os_get_directory_list(const char *root, gboolean files)
     }
 
     free(namelist);
-#endif
     return list;
 }
 
@@ -526,9 +524,9 @@ services_os_set_exec(svc_action_t *op)
     } else {
         if (op->agent[0] == '/') {
             /* if given an absolute path, use that instead
-             * of tacking on the LSB_ROOT path to the front */
+             * of tacking on the LSB_ROOT_DIR path to the front */
             op->opaque->exec = crm_strdup(op->agent);
-        } else if (asprintf(&op->opaque->exec, "%s/%s", LSB_ROOT, op->agent) == -1) {
+        } else if (asprintf(&op->opaque->exec, "%s/%s", LSB_ROOT_DIR, op->agent) == -1) {
             return;
         }
         op->opaque->args[0] = strdup(op->opaque->exec);
@@ -540,14 +538,14 @@ services_os_set_exec(svc_action_t *op)
 GList *
 services_os_list(void)
 {
-    return get_directory_list(LSB_ROOT, TRUE);
+    return get_directory_list(LSB_ROOT_DIR, TRUE);
 }
 
 
 GList *
 resources_os_list_ocf_providers(void)
 {
-    return get_directory_list(OCF_ROOT "/resource.d", FALSE);
+    return get_directory_list(OCF_ROOT_DIR "/resource.d", FALSE);
 }
 
 GList *
@@ -555,7 +553,7 @@ resources_os_list_ocf_agents(const char *provider)
 {
     if (provider) {
         char buffer[500];
-        snprintf(buffer, sizeof(buffer), "%s//resource.d/%s", OCF_ROOT,
+        snprintf(buffer, sizeof(buffer), "%s//resource.d/%s", OCF_ROOT_DIR,
                  provider);
         return get_directory_list(buffer, TRUE);
     }

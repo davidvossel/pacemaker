@@ -106,7 +106,7 @@ svc_action_t *resources_action_create(
         op->params = params;
 
         if (asprintf(&op->opaque->exec, "%s/resource.d/%s/%s",
-                     OCF_ROOT, provider, agent) == -1) {
+                     OCF_ROOT_DIR, provider, agent) == -1) {
             goto return_error;
         }
         op->opaque->args[0] = strdup(op->opaque->exec);
@@ -307,7 +307,6 @@ GList *
 resources_list_standards(void)
 {
     GList *standards = NULL;
-#ifdef __linux__
     standards = g_list_append(standards, strdup("ocf"));
     standards = g_list_append(standards, strdup("lsb"));
     if (g_file_test(SYSTEMCTL, G_FILE_TEST_IS_REGULAR)) {
@@ -316,10 +315,6 @@ resources_list_standards(void)
     if (g_file_test(SERVICE_SCRIPT, G_FILE_TEST_IS_REGULAR)) {
         standards = g_list_append(standards, strdup("service"));
 	}
-#endif
-#ifdef WIN32
-    standards = g_list_append(standards, strdup("windows"));
-#endif
     return standards;
 }
 
@@ -342,11 +337,8 @@ resources_list_agents(const char *standard, const char *provider)
     } else if (strcasecmp(standard, "lsb") == 0
             || strcasecmp(standard, "windows") == 0) {
         return services_os_list();
-
-#ifdef __linux__
     } else if (strcasecmp(standard, "systemd") == 0) {
         return resources_os_list_systemd_services();
-#endif
     }
 
     return NULL;

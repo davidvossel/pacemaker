@@ -22,8 +22,8 @@
  * \ingroup coreapi
  */
 
-#ifndef __MH_SERVICES__
-#define __MH_SERVICES__
+#ifndef __PCMK_SERVICES__
+#define __PCMK_SERVICES__
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,18 +32,22 @@ extern "C" {
 #include <glib.h>
 #include <stdio.h>
 
+#ifndef OCF_ROOT_DIR
+#define OCF_ROOT_DIR "/usr/lib/ocf"
+#endif
+
+#ifndef LSB_ROOT_DIR
+#define LSB_ROOT_DIR "/etc/init.d"
+#endif
+
 /* TODO: Autodetect these two ?*/
-#ifndef OCF_ROOT
-#define OCF_ROOT "/usr/lib/ocf"
-#endif
-
-#ifndef LSB_ROOT
-#define LSB_ROOT "/etc/init.d"
-#endif
-
+#ifndef SYSTEMCTL
 #define SYSTEMCTL "/bin/systemctl"
+#endif
 
+#ifndef SERVICE_SCRIPT
 #define SERVICE_SCRIPT "/sbin/service"
+#endif
 
 enum lsb_exitcode {
     PCMK_LSB_OK = 0,
@@ -346,4 +350,4 @@ services_get_ocf_exitcode(char *action, int lsb_exitcode)
 }
 #endif
 
-#endif /* __MH_SERVICES__ */
+#endif /* __PCMK_SERVICES__ */
