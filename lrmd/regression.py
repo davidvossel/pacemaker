@@ -316,8 +316,8 @@ class Tests:
 		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
 			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
 
-		### start delay /stop test ###
-		test = self.new_test("start_delay_stop", "Register a test, then start with start_delay value, and stop it")
+		### start delay then stop test ###
+		test = self.new_test("start_delay", "Register a test, then start with start_delay value.")
 		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
 			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
 		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
@@ -330,7 +330,19 @@ class Tests:
 		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
 			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
 
-		### monitor fail ###
+		### start delay, but stop before it gets a chance to start.  ###
+		test = self.new_test("start_delay_cancel", "Register a test, then start with start_delay value, but cancel it before execution.")
+		test.add_cmd("-c register_rsc -r test_rsc -P pacemaker -C ocf -T Dummy "
+			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" -t 1000")
+		test.add_cmd("-c exec -r test_rsc -s 2000 -a start -w -t 1000")
+		test.add_cmd("-c cancel -r test_rsc -a start -t 1000 "
+			"-l \"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_CANCELLED\" ")
+		test.add_expected_fail_cmd("-l "
+			"\"NEW_EVENT event_type:exec_complete rsc_id:test_rsc action:start rc:0 exec_rc:0 op_status:OP_DONE\" -t 3000")
+		test.add_cmd("-c unregister_rsc -r test_rsc -t 1000 "
+			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
+
+		### monitor fail for ocf resources ###
 		test = self.new_test("monitor_fail_ocf", "Register a test, then start, monitor a few times, then make the monitor fail.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C \"ocf\" -P \"pacemaker\" -T \"Dummy\" -t 1000 "
 			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
@@ -351,7 +363,7 @@ class Tests:
 		test.add_cmd("-c unregister_rsc -r \"test_rsc\" -t 1000 "
 			"-l \"NEW_EVENT event_type:unregister rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")
 
-
+		### monitor fail for systemd resource ###
 		test = self.new_test("monitor_fail_systemd", "Register a test, then start, monitor a few times, then make the monitor fail.")
 		test.add_cmd("-c register_rsc -r \"test_rsc\" -C systemd -T lrmd_dummy_daemon -t 1000 "
 			"-l \"NEW_EVENT event_type:register rsc_id:test_rsc action:none rc:0 exec_rc:0 op_status:OP_DONE\" ")

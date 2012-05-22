@@ -270,9 +270,13 @@ cmd_finalize(lrmd_cmd_t *cmd, lrmd_rsc_t *rsc)
 	if (cmd->interval && (cmd->lrmd_op_status == PCMK_LRM_OP_CANCELLED)) {
 		if (rsc) {
 			rsc->recurring_ops = g_list_remove(rsc->recurring_ops, cmd);
+			rsc->pending_ops = g_list_remove(rsc->pending_ops, cmd);
 		}
 		free_lrmd_cmd(cmd);
 	} else if (cmd->interval == 0) {
+		if (rsc) {
+			rsc->pending_ops = g_list_remove(rsc->pending_ops, cmd);
+		}
 		free_lrmd_cmd(cmd);
 	}
 }
