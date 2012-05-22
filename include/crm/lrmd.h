@@ -107,7 +107,9 @@ typedef struct lrmd_event_data_s {
 	const char *action;
 	/* api return code */
 	int rc;
-	/* executed ra return code */
+	/* executed ra return code (Depending on the rsc
+	 * in use, this will be the OCF, LSB, STONITH, or
+	 * systemd return code. */
 	int exec_rc;
 	/* client api call id associated with this event */
 	int call_id;
@@ -128,8 +130,6 @@ typedef struct lrmd_api_operations_s
 {
 	/*!
 	 * \brief Connect from the lrmd.
-	 *
-	 * \note This must be done before executing any other API functions.
 	 *
 	 * \retval 0, success
 	 * \retval negative error code on failure
@@ -210,7 +210,7 @@ typedef struct lrmd_api_operations_s
 		const char *action,
 		int interval, /* ms */
 		int timeout, /* ms */
-		int start_delay, /* ms TODO IMPLEMENT START DELAY. it is ignored right now.*/
+		int start_delay, /* ms */
 		enum lrmd_call_options options,
 		lrmd_key_value_t *params); /* ownership of params is given up to api here */
 
