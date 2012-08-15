@@ -38,7 +38,10 @@ typedef struct remote_fencing_op_s {
 
     guint op_timer;
     guint query_timer;
+    /* timeout used for current topology level */
     guint base_timeout;
+    /* default timeout used with no topology level timeout is present */
+    guint default_timeout;
 
     char *delegate;
     time_t completed;
@@ -61,6 +64,7 @@ typedef struct remote_fencing_op_s {
 typedef struct stonith_topology_s {
     char *node;
     GListPtr levels[ST_LEVEL_MAX];
+    int level_timeouts[ST_LEVEL_MAX];
 
 } stonith_topology_t;
 

@@ -223,11 +223,12 @@ stonith_api_remove_level(stonith_t * st, int options, const char *node, int leve
 }
 
 xmlNode *
-create_level_registration_xml(const char *node, int level, stonith_key_value_t * device_list)
+create_level_registration_xml(const char *node, int level, stonith_key_value_t * device_list, int timeout)
 {
     xmlNode *data = create_xml_node(NULL, F_STONITH_LEVEL);
 
     crm_xml_add_int(data, XML_ATTR_ID, level);
+    crm_xml_add_int(data, XML_ATTR_TIMEOUT, timeout);
     crm_xml_add(data, F_STONITH_TARGET, node);
     crm_xml_add(data, "origin", __FUNCTION__);
 
@@ -242,10 +243,10 @@ create_level_registration_xml(const char *node, int level, stonith_key_value_t *
 
 static int
 stonith_api_register_level(stonith_t * st, int options, const char *node, int level,
-                           stonith_key_value_t * device_list)
+                           stonith_key_value_t * device_list, int timeout)
 {
     int rc = 0;
-    xmlNode *data = create_level_registration_xml(node, level, device_list);
+    xmlNode *data = create_level_registration_xml(node, level, device_list, timeout);
 
     rc = stonith_send_command(st, STONITH_OP_LEVEL_ADD, data, NULL, options, 0);
     free_xml(data);

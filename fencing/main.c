@@ -444,12 +444,12 @@ static void topology_remove_helper(const char *node, int level)
     free(desc);
 }
 
-static void topology_register_helper(const char *node, int level, stonith_key_value_t *device_list) 
+static void topology_register_helper(const char *node, int level, stonith_key_value_t *device_list, int timeout)
 {
     int rc;
     char *desc = NULL;
     xmlNode *notify_data = create_xml_node(NULL, STONITH_OP_LEVEL_ADD);
-    xmlNode *data = create_level_registration_xml(node, level, device_list);
+    xmlNode *data = create_level_registration_xml(node, level, device_list, timeout);
 
     rc = stonith_level_register(data, &desc);
 
@@ -506,6 +506,7 @@ static void register_fencing_topology(xmlXPathObjectPtr xpathObj, gboolean force
 
     for(lpc = 0; lpc < max; lpc++) {
         int index = 0;
+        int timeout = 0;
         const char *target;
         const char *dev_list;
         stonith_key_value_t *devices = NULL;
@@ -513,8 +514,10 @@ static void register_fencing_topology(xmlXPathObjectPtr xpathObj, gboolean force
         CRM_CHECK(match != NULL, continue);
 
         crm_element_value_int(match, XML_ATTR_STONITH_INDEX, &index);
+        crm_element_value_int(match, XML_ATTR_TIMEOUT, &timeout);
         target = crm_element_value(match, XML_ATTR_STONITH_TARGET);
         dev_list = crm_element_value(match, XML_ATTR_STONITH_DEVICES);
+
         devices = parse_device_list(dev_list);
 
         crm_trace("Updating %s[%d] (%s) to %s", target, index, ID(match), dev_list);
@@ -527,12 +530,12 @@ static void register_fencing_topology(xmlXPathObjectPtr xpathObj, gboolean force
 
         } else if(force == FALSE && crm_element_value(match, XML_DIFF_MARKER)) {
             /* Addition */
-            topology_register_helper(target, index, devices);
+            topology_register_helper(target, index, devices, timeout);
 
         } else { /* Modification */
             /* Remove then re-add */
             topology_remove_helper(target, index);
-            topology_register_helper(target, index, devices);
+            topology_register_helper(target, index, devices, timeout);
         }
 
         stonith_key_value_freeall(devices, 1, 1);

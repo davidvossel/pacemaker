@@ -96,6 +96,7 @@ main(int argc, char ** argv)
     int quiet = 0;
     int verbose = 0;
     int argerr = 0;
+    int timeout_set = 0;
     int timeout = 120;
     int option_index = 0;
     int fence_level = 0;
@@ -155,6 +156,7 @@ main(int argc, char ** argv)
             action = flag;
             break;
         case 't':
+            timeout_set = 1;
             timeout = crm_atoi(optarg, NULL);
             break;
         case 'B':
@@ -266,7 +268,7 @@ main(int argc, char ** argv)
         rc = st->cmds->remove_device(st, st_opts, device);
         break;
     case 'r':
-        rc = st->cmds->register_level(st, st_opts, target, fence_level, devices);
+        rc = st->cmds->register_level(st, st_opts, target, fence_level, devices, timeout_set ? timeout : 0);
         break;
     case 'd':
         rc = st->cmds->remove_level(st, st_opts, target, fence_level);

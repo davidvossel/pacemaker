@@ -18,6 +18,9 @@
       <attribute name="id"><data type="ID"/></attribute>
       <attribute name="target"><text/></attribute>
       <attribute name="index"><data type="positiveInteger"/></attribute>
+	<optional>
+      <attribute name="timeout"><data type="positiveInteger"/></attribute>
+	</optional>
       <attribute name="devices">
 	<data type="string">
           <param name="pattern">([a-zA-Z0-9_.-]+)(,[a-zA-Z0-9_.-]+)*</param>

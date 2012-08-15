@@ -442,6 +442,7 @@ void free_topology_entry(gpointer data)
 int stonith_level_register(xmlNode *msg, char **desc) 
 {
     int id = 0;
+    int timeout = 0;
     int rc = pcmk_ok;
     xmlNode *child = NULL;
 
@@ -450,6 +451,7 @@ int stonith_level_register(xmlNode *msg, char **desc)
     stonith_topology_t *tp = g_hash_table_lookup(topology, node);
 
     crm_element_value_int(level, XML_ATTR_ID, &id);
+    crm_element_value_int(level, XML_ATTR_ID, &timeout);
     if(desc) {
         *desc = g_strdup_printf("%s[%d]", node, id);
     }
@@ -472,6 +474,7 @@ int stonith_level_register(xmlNode *msg, char **desc)
         const char *device = ID(child);
         crm_trace("Adding device '%s' for %s (%d)", device, node, id);
         tp->levels[id] = g_list_append(tp->levels[id], strdup(device));
+        tp->level_timeouts[id] = timeout;
     }
 
     crm_info("Node %s has %d active fencing levels", node, count_active_levels(tp));
@@ -506,6 +509,7 @@ int stonith_level_remove(xmlNode *msg, char **desc)
     } else if(id > 0 && tp->levels[id] != NULL) {
         g_list_free_full(tp->levels[id], free);
         tp->levels[id] = NULL;
+        tp->level_timeouts[id] = 0;
 
         crm_info("Removed entry '%d' from %s's topology (%d active entries remaining)",
                  id, node, count_active_levels(tp));

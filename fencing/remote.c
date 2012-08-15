@@ -256,6 +256,12 @@ static int stonith_topology_next(remote_fencing_op_t *op)
     if(op->level < ST_LEVEL_MAX) {
         crm_trace("Attempting fencing level %d for %s (%d devices)", op->level, op->target, g_list_length(tp->levels[op->level]));
         op->devices = tp->levels[op->level];
+        if (tp->level_timeouts[op->level] > 0) {
+            op->base_timeout = tp->level_timeouts[op->level];
+        } else {
+            op->base_timeout = op->default_timeout;
+        }
+
         return pcmk_ok;
     }
 
@@ -285,7 +291,8 @@ void *create_remote_stonith_op(const char *client, xmlNode *request, gboolean pe
     }
 
     op = calloc(1, sizeof(remote_fencing_op_t));
-    crm_element_value_int(request, F_STONITH_TIMEOUT, (int*)&(op->base_timeout));
+    crm_element_value_int(request, F_STONITH_TIMEOUT, (int*)&(op->default_timeout));
+    op->base_timeout = op->default_timeout;
 
     if(peer && dev) {
         op->id = crm_element_value_copy(dev, F_STONITH_REMOTE);

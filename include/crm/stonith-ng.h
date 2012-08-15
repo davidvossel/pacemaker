@@ -158,12 +158,13 @@ typedef struct stonith_api_operations_s
      *        at that level for a specific node.
      *
      * \note This feature is not available when stonith is in standalone mode.
+     * \note Timeout is optional, when given '0' the default stonith timeout is used
      *
      * \retval 0, success
      * \retval negative error code on failure
      */
     int (*register_level)(
-        stonith_t *st, int options, const char *node, int level, stonith_key_value_t *device_list);
+        stonith_t *st, int options, const char *node, int level, stonith_key_value_t *device_list, int timeout);
 
     /*!
      * \brief Get the metadata documentation for a resource.
