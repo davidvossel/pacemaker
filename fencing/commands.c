@@ -50,6 +50,9 @@ GList *cmd_list = NULL;
 static int active_children = 0;
 static gboolean stonith_device_dispatch(gpointer user_data);
 static void st_child_done(GPid pid, int rc, const char *output, gpointer user_data);
+static void start_dynamic_list_query(stonith_device_t *dev);
+
+#define DEFAULT_DYNAMIC_LIST_TIMEOUT 60
 
 typedef struct async_command_s {
 
@@ -69,6 +72,9 @@ typedef struct async_command_s {
     char *victim;
     char *action;
     char *device;
+    /* Some internal commands care if the device registration updated
+     * while the cmd executed. */
+    time_t device_registration_time;
     char *mode;
 
     GListPtr device_list;
@@ -80,6 +86,9 @@ typedef struct async_command_s {
     /*! If the operation timed out, this is the last signal
      *  we sent to the process to get it to terminate */
     int last_timeout_signo;
+
+    /*! callback to be used after action is complete */
+    void (*done_cb)(GPid pid, int rc, const char *output, gpointer user_data);
 } async_command_t;
 
 static xmlNode *
@@ -154,6 +163,7 @@ static async_command_t *create_async_command(xmlNode *msg)
     CRM_CHECK(cmd->op != NULL, crm_log_xml_warn(msg, "NoOp"); free_async_command(cmd); return NULL);
     CRM_CHECK(cmd->client != NULL, crm_log_xml_warn(msg, "NoClient"));
 
+    cmd->done_cb = st_child_done;
     cmd_list = g_list_append(cmd_list, cmd);
     return cmd;
 }
@@ -173,7 +183,7 @@ static int stonith_manual_ack(xmlNode *msg, remote_fencing_op_t *op)
     crm_notice("Injecting manual confirmation that %s is safely off/down",
                crm_element_value(dev, F_STONITH_TARGET));
 
-    st_child_done(0, 0, NULL, cmd);
+    cmd->done_cb(0, 0, NULL, cmd);
     return pcmk_ok;
 }
 
@@ -209,7 +219,8 @@ static gboolean stonith_device_execute(stonith_device_t *device)
         device->params,
         device->aliases);
 
-    exec_rc = stonith_action_execute_async(action, (void *) cmd, st_child_done);
+    /* for async exec, exec_rc is pid if positive and error code if negative/zero */
+    exec_rc = stonith_action_execute_async(action, (void *) cmd, cmd->done_cb);
 
     if(exec_rc > 0) {
         crm_debug("Operation %s%s%s on %s now running with pid=%d, timeout=%dms",
@@ -221,7 +232,7 @@ static gboolean stonith_device_execute(stonith_device_t *device)
         crm_warn("Operation %s%s%s on %s failed (%d/%d)",
             cmd->action, cmd->victim?" for node ":"", cmd->victim?cmd->victim:"",
             device->id, exec_rc, rc);
-        st_child_done(0, rc<0?rc:exec_rc, NULL, cmd);
+        cmd->done_cb(0, rc<0?rc:exec_rc, NULL, cmd);
     }
     return TRUE;
 }
@@ -262,6 +273,35 @@ static void schedule_stonith_command(async_command_t *cmd, stonith_device_t *dev
     mainloop_set_trigger(device->work);
 }
 
+static void
+schedule_internal_command(stonith_device_t *device,
+                          const char *action,
+                          const char *victim,
+                          int timeout,
+                          void (*done_cb)(GPid pid, int rc, const char *output, gpointer user_data))
+{
+    async_command_t *cmd = NULL;
+
+    cmd = calloc(1, sizeof(async_command_t));
+
+    cmd->id = -1;
+    cmd->default_timeout = timeout ? timeout : 60;
+    cmd->timeout = cmd->default_timeout;
+    cmd->action = strdup(action);
+    cmd->victim = victim ? strdup(victim) : NULL;
+    cmd->device = strdup(device->id);
+    cmd->device_registration_time = device->registration_time;
+    /* The below values are used so we can identify internal
+     * commands from client generated commands */
+    cmd->origin = strdup("st_internal_cmd");
+    cmd->client = strdup("st_internal_client");
+    cmd->client_name = strdup("st_internal_client_name");
+
+    cmd->done_cb = done_cb;
+
+    schedule_stonith_command(cmd, device);
+}
+
 void free_device(gpointer data)
 {
     GListPtr gIter = NULL;
@@ -274,11 +314,14 @@ void free_device(gpointer data)
         async_command_t *cmd = gIter->data;
 
         crm_warn("Removal of device '%s' purged operation %s", device->id, cmd->action);
-        st_child_done(0, -ENODEV, NULL, cmd);
+        cmd->done_cb(0, -ENODEV, NULL, cmd);
         free_async_command(cmd);
     }
     g_list_free(device->pending_ops);
 
+    if (device->dynamic_list_update_id) {
+        g_source_remove(device->dynamic_list_update_id);
+    }
     g_list_free_full(device->targets, free);
     free(device->namespace);
     free(device->on_target_actions);
@@ -469,73 +512,70 @@ target_list_type(stonith_device_t *dev)
         }
     }
 
-	return check_type;
+    return check_type;
+}
+
+static gboolean
+dynamic_list_query_timer_cb(gpointer data)
+{
+    stonith_device_t *device = data;
+    device->dynamic_list_update_id = 0;
+
+    start_dynamic_list_query(device);
+    return FALSE;
 }
 
 static void
-update_dynamic_list(stonith_device_t *dev)
+dynamic_list_query_done(GPid pid, int rc, const char *output, gpointer user_data)
 {
-    time_t now = time(NULL);
+    async_command_t *cmd = user_data;
+    stonith_device_t *device = NULL;
 
-    /* Host/alias must be in the list output to be eligable to be fenced
-     *
-     * Will cause problems if down'd nodes aren't listed or (for virtual nodes)
-     *  if the guest is still listed despite being moved to another machine
-     */
-
-    if(dev->targets_age < 0) {
-        crm_trace("Port list queries disabled for %s", dev->id);
-
-    } else if(dev->targets == NULL || dev->targets_age + 60 < now) {
-        stonith_action_t *action = NULL;
-        char *output = NULL;
-        int rc = pcmk_ok;
-        int exec_rc = pcmk_ok;
-
-        if(dev->active_pid != 0) {
-            crm_notice("Port list query can not execute because device is busy, using cache: %s",
-                    dev->targets ? "YES" : "NO");
-            return;
-        }
-
-        action = stonith_action_create(dev->agent, "list", NULL, 10, dev->params, NULL);
-        exec_rc = stonith_action_execute(action, &rc, &output);
-
-        if(rc != 0 && dev->active_pid == 0) {
-            /* This device probably only supports a single
-             * connection, which appears to already be in use,
-             * likely involved in a montior or (less likely)
-             * metadata operation.
-             *
-             * Avoid disabling port list queries in the hope that
-             * the op would succeed next time
-             */
-            crm_info("Couldn't query ports for %s. Call failed with rc=%d and active_pid=%d: %s",
-                     dev->agent, rc, dev->active_pid, output);
-
-        } else if(exec_rc < 0 || rc != 0) {
-            /* If we successfully got the targets earlier, don't disable. */
-            if (dev->targets) {
-                return;
-            }
-            crm_notice("Disabling port list queries for %s (%d/%d): %s",
-                           dev->id, exec_rc, rc, output);
-            dev->targets_age = -1;
-
-            /* Fall back to status */
-            g_hash_table_replace(dev->params, strdup(STONITH_ATTR_HOSTCHECK), strdup("status"));
-
-            g_list_free_full(dev->targets, free);
-            dev->targets = NULL;
-        } else {
-            crm_info("Refreshing port list for %s", dev->id);
-            g_list_free_full(dev->targets, free);
-            dev->targets = parse_host_list(output);
-            dev->targets_age = now;
-        }
-
-        free(output);
+    if (!(device = g_hash_table_lookup(device_list, cmd->device))) {
+        return;
     }
+
+    if (device->registration_time != cmd->device_registration_time) {
+        return;
+    }
+
+    /* If we successfully got the targets earlier, don't disable. */
+    if (rc != 0 && !device->targets) {
+        crm_notice("Disabling port list queries for %s (%d): %s",
+                       device->id, rc, output);
+
+        if (device->dynamic_list_update_id) {
+            g_source_remove(device->dynamic_list_update_id);
+            device->dynamic_list_update_id = 0;
+        }
+        /* Fall back to status */
+        g_hash_table_replace(device->params, strdup(STONITH_ATTR_HOSTCHECK), strdup("status"));
+        return;
+    }
+
+    crm_info("Refreshing port list for %s", device->id);
+    g_list_free_full(device->targets, free);
+    device->targets = parse_host_list(output);
+
+    /* schedule the next update. */
+    if (!device->dynamic_list_update_id) {
+        GRand *rand = g_rand_new();
+        /* 15min = 900sec. Rand (400 to 900) + Rand (500 to 900) is somewhere between 15 and 30 minutes */
+        int interval = g_rand_int_range(rand, 400, 900) + g_rand_int_range(rand, 500, 900);
+        g_rand_free(rand);
+        /* The interval is random so nodes with the same registration will less likely collide. */
+        device->dynamic_list_update_id = g_timeout_add_seconds(interval, dynamic_list_query_timer_cb, device);
+    }
+}
+
+static void
+start_dynamic_list_query(stonith_device_t *dev)
+{
+    schedule_internal_command(dev,
+        "list",
+        NULL,
+        DEFAULT_DYNAMIC_LIST_TIMEOUT,
+        dynamic_list_query_done);
 }
 
 /*!
@@ -635,13 +675,6 @@ int stonith_device_register(xmlNode *msg, const char **desc, gboolean from_cib)
     value = g_hash_table_lookup(device->params, STONITH_ATTR_HOSTMAP);
     device->aliases = build_port_aliases(value, &(device->targets));
 
-    value = target_list_type(device);
-    if (safe_str_eq(value, "dynamic-list")) {
-        /* set the dynamic list during the register to guarantee we have
-         * targets cached */
-        update_dynamic_list(device);
-    }
-
     if ((dup = device_has_duplicate(device))) {
         crm_notice("Device '%s' already existed in device list (%d active devices)", device->id, g_hash_table_size(device_list));
         free_device(device);
@@ -659,6 +692,8 @@ int stonith_device_register(xmlNode *msg, const char **desc, gboolean from_cib)
                 mainloop_set_trigger(device->work);
             }
         }
+
+        device->registration_time = time(NULL);
         g_hash_table_replace(device_list, device->id, device);
 
         crm_notice("Added '%s' to the device list (%d active devices)", device->id, g_hash_table_size(device_list));
@@ -666,6 +701,13 @@ int stonith_device_register(xmlNode *msg, const char **desc, gboolean from_cib)
             crm_info("The fencing device '%s' requires actions (%s) to be executed on the target node",
                 device->id,
                 device->on_target_actions);
+        }
+
+        value = target_list_type(device);
+        if (safe_str_eq(value, "dynamic-list")) {
+            /* set the dynamic list during the register to guarantee we have
+             * targets cached */
+            start_dynamic_list_query(device);
         }
     }
     if(desc) {
@@ -894,12 +936,9 @@ static gboolean can_fence_host_with_device(stonith_device_t *dev, const char *ho
         }
 
     } else if(safe_str_eq(check_type, "dynamic-list")) {
-        update_dynamic_list(dev);
-
         if(string_in_list(dev->targets, alias)) {
             can = TRUE;
         }
-
     } else if(safe_str_eq(check_type, "status")) {
         int rc = 0;
         int exec_rc = 0;
@@ -1137,7 +1176,6 @@ static void cancel_stonith_command(async_command_t *cmd)
     }
 }
 
-#define READ_MAX 500
 static void st_child_done(GPid pid, int rc, const char *output, gpointer user_data)
 {
     stonith_device_t *device = NULL;
