@@ -322,6 +322,7 @@ void free_device(gpointer data)
     if (device->dynamic_list_update_id) {
         g_source_remove(device->dynamic_list_update_id);
     }
+    g_list_free_full(device->status_query_cache, free);
     g_list_free_full(device->targets, free);
     free(device->namespace);
     free(device->on_target_actions);
@@ -942,6 +943,7 @@ static gboolean can_fence_host_with_device(stonith_device_t *dev, const char *ho
     } else if(safe_str_eq(check_type, "status")) {
         int rc = 0;
         int exec_rc = 0;
+        GList *entry = NULL;
         stonith_action_t *action = NULL;
         /* Run the status operation for the device/target combination
          * Will cause problems if the device doesn't return 2 for down'd nodes or
@@ -949,20 +951,35 @@ static gboolean can_fence_host_with_device(stonith_device_t *dev, const char *ho
          *  have been moved to another host
          */
 
-        action = stonith_action_create(dev->agent, "status", host, 5, dev->params, dev->aliases);
+        action = stonith_action_create(dev->agent, "status", host, 15, dev->params, dev->aliases);
         exec_rc = stonith_action_execute(action, &rc, NULL);
 
+        entry = g_list_find_custom(dev->status_query_cache, host, (GCompareFunc) strcmp);
         if(exec_rc != 0) {
             crm_err("Could not invoke %s: rc=%d", dev->id, exec_rc);
 
         } else if(rc == 1 /* unkown */) {
+            if (entry) {
+                dev->status_query_cache = g_list_remove_link(dev->status_query_cache, entry);
+                free(entry->data);
+                entry->data = NULL;
+                g_list_free_1(entry);
+            }
             crm_trace("Host %s is not known by %s", host, dev->id);
 
         } else if(rc == 0 /* active */ || rc == 2 /* inactive */) {
             can = TRUE;
 
+            if (!entry) {
+                dev->status_query_cache = g_list_append(dev->status_query_cache, strdup(host));
+            }
+        } else if (entry) {
+            can = TRUE;
+            crm_notice("Unkown result when testing if %s can fence %s: rc=%d. Using found cached result",
+                dev->id, host, rc, entry ? "TRUE" : "FALSE");
         } else {
-            crm_notice("Unkown result when testing if %s can fence %s: rc=%d", dev->id, host, rc);
+            crm_notice("Unkown result when testing if %s can fence %s: rc=%d.",
+                dev->id, host, rc);
         }
 
     } else {

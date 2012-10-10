@@ -40,6 +40,7 @@ typedef struct stonith_device_s {
     gboolean api_registered;
 
     guint dynamic_list_update_id;
+    GList *status_query_cache;
 } stonith_device_t;
 
 typedef struct stonith_client_s {
