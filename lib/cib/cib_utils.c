@@ -340,9 +340,26 @@ fix_cib_diff(xmlNode * last, xmlNode * next, xmlNode * local_diff, gboolean chan
 {
     xmlNode *cib = NULL;
     xmlNode *diff_child = NULL;
+
     const char *tag = NULL;
     const char *value = NULL;
 
+    if(local_diff == NULL) {
+        crm_trace("Nothing to do");
+        return;
+    }
+
+    if(crm_element_value(local_diff, XML_ATTR_DIGEST) == NULL) {
+        char *digest = NULL;
+        const char *version = crm_element_value(next, XML_ATTR_CRM_VERSION);
+
+        digest = calculate_xml_versioned_digest(next, FALSE, TRUE, version);
+
+        crm_trace("Adding digest %s to diff %p", digest, local_diff);
+        crm_xml_add(local_diff, XML_ATTR_DIGEST, digest);
+        free(digest);
+    }
+    
     tag = "diff-removed";
     diff_child = find_xml_node(local_diff, tag, FALSE);
     if (diff_child == NULL) {
@@ -523,7 +540,7 @@ cib_perform_op(const char *op, int call_options, cib_op_t * fn, gboolean is_quer
                     crm_xml_add(local_diff, XML_ATTR_CRM_VERSION, CRM_FEATURE_SET);
                     create_xml_node(local_diff, "diff-removed");
                     create_xml_node(local_diff, "diff-added");
-
+                    
                     /* Usually these are attrd re-updates */
                     crm_log_xml_trace(req, "Non-change");
 
