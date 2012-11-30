@@ -274,9 +274,6 @@ crmd_exit(int rc)
     if (reload_hash) {
         g_hash_table_destroy(reload_hash);
     }
-    if (resource_history) {
-        g_hash_table_destroy(resource_history);
-    }
     if (voted) {
         g_hash_table_destroy(voted);
     }
@@ -284,10 +281,7 @@ crmd_exit(int rc)
     cib_delete(fsa_cib_conn);
     fsa_cib_conn = NULL;
 
-    if (fsa_lrm_conn) {
-        lrmd_api_delete(fsa_lrm_conn);
-        fsa_lrm_conn = NULL;
-    }
+    lrm_state_destroy_all();
 
     free(transition_timer);
     free(integration_timer);
@@ -362,7 +356,8 @@ do_startup(long long action,
 
     crm_debug("Creating CIB and LRM objects");
     fsa_cib_conn = cib_new();
-    fsa_lrm_conn = lrmd_api_new();
+
+    lrm_state_init_local();
 
     /* set up the timers */
     transition_timer = calloc(1, sizeof(fsa_timer_t));
