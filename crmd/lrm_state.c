@@ -80,7 +80,7 @@ lrm_state_create(const char *node_name)
     }
 
     state->node_name = strdup(node_name);
-    state->conn = lrmd_api_new();
+    state->conn = lrmd_remote_api_new("localhost", 0);
 
     state->deletion_ops = g_hash_table_new_full(crm_str_hash,
                                                 g_str_equal,

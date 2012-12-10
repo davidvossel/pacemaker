@@ -200,11 +200,18 @@ long long crm_int_helper(const char *text, char **end_text);
 char *crm_concat(const char *prefix, const char *suffix, char join);
 char *generate_hash_key(const char *crm_msg_reference, const char *sys);
 xmlNode *crm_recv_remote_msg(void *session, gboolean encrypted);
-void crm_send_remote_msg(void *session, xmlNode * msg, gboolean encrypted);
+char *crm_recv_remote_raw(void *session, gboolean encrypted, size_t *recv_len);
+int crm_send_remote_msg(void *session, xmlNode * msg, gboolean encrypted);
+int crm_send_remote_msg_raw(void *session, const char *buf, size_t len, gboolean encrypted);
 
 const char *daemon_option(const char *option);
 void set_daemon_option(const char *option, const char *value);
 gboolean daemon_option_enabled(const char *daemon, const char *option);
+
+enum lrmd_client_type {
+    LRMD_CLIENT_IPC,
+    LRMD_CLIENT_TLS,
+};
 
 #  define crm_config_err(fmt...) { crm_config_error = TRUE; crm_err(fmt); }
 #  define crm_config_warn(fmt...) { crm_config_warning = TRUE; crm_warn(fmt); }

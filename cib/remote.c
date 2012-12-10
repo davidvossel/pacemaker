@@ -80,7 +80,7 @@ debug_log(int level, const char *str)
     fputs(str, stderr);
 }
 
-extern gnutls_session *create_tls_session(int csock, int type);
+extern gnutls_session *create_anon_tls_session(int csock, int type);
 
 #endif
 
@@ -260,7 +260,7 @@ cib_remote_listen(gpointer data)
     if (ssock == remote_tls_fd) {
 #ifdef HAVE_GNUTLS_GNUTLS_H
         /* create gnutls session for the server socket */
-        session = create_tls_session(csock, GNUTLS_SERVER);
+        session = create_anon_tls_session(csock, GNUTLS_SERVER);
         if (session == NULL) {
             crm_err("TLS session creation failed");
             close(csock);

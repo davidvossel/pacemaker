@@ -40,14 +40,53 @@
 
 #include <crm/stonith-ng.h>
 
+#ifdef HAVE_GNUTLS_GNUTLS_H
+#  undef KEYFILE
+#  include <gnutls/gnutls.h>
+#endif
+
+#include <sys/socket.h>
+#include <netinet/ip.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
 CRM_TRACE_INIT_DATA(lrmd);
 
 static stonith_t *stonith_api = NULL;
+static int lrmd_api_disconnect(lrmd_t *lrmd);
+static int lrmd_connected(lrmd_t *lrmd);
+int lrmd_fd_ready(int sock, int timeout /* ms */);
+
+#ifdef HAVE_GNUTLS_GNUTLS_H
+int lrmd_tls_set_key(gnutls_datum_t *key, const char *location);
+static void lrmd_tls_disconnect(lrmd_t *lrmd);
+static int global_remote_msg_id = 0;
+int lrmd_tls_send_msg(gnutls_session *session, xmlNode *msg, uint32_t id, const char *msg_type);
+xmlNode *lrmd_tls_get_next_msg(char **msg_buf, char **new_data, size_t *len);
+static void lrmd_tls_connection_destroy(gpointer userdata);
+#endif
 
 typedef struct lrmd_private_s {
+    enum lrmd_client_type type;
     char *token;
-    crm_ipc_t *ipc;
     mainloop_io_t *source;
+
+    /* IPC parameters */
+    crm_ipc_t *ipc;
+
+    /* TLS parameters */
+#ifdef HAVE_GNUTLS_GNUTLS_H
+    char *server;
+    int port;
+    gnutls_psk_client_credentials_t psk_cred_c;
+    gnutls_session *session;
+    int sock;
+
+    char *recv_buf;
+
+    GList *pending_notify;
+    crm_trigger_t *process_notify;
+#endif
 
     lrmd_event_callback callback;
 
@@ -180,21 +219,34 @@ lrmd_free_event(lrmd_event_data_t * event)
     free(event);
 }
 
+int
+lrmd_fd_ready(int sock, int timeout /* ms */)
+{
+    struct pollfd fds = { 0, };
+
+    if (sock <= 0) {
+        return -ENOTCONN;
+    }
+
+    fds.fd = sock;
+    fds.events = POLLIN;
+
+    return poll(&fds, 1, timeout);
+}
+
 static int
-lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
+lrmd_dispatch_internal(lrmd_t *lrmd, xmlNode *msg)
 {
     const char *type;
-    lrmd_t *lrmd = userdata;
     lrmd_private_t *native = lrmd->private;
     lrmd_event_data_t event = { 0, };
-    xmlNode *msg;
 
     if (!native->callback) {
         /* no callback set */
+        crm_trace("notify event received but client has not set callback");
         return 1;
     }
 
-    msg = string2xml(buffer);
     type = crm_element_value(msg, F_LRMD_OPERATION);
     crm_element_value_int(msg, F_LRMD_CALLID, &event.call_id);
     event.rsc_id = crm_element_value(msg, F_LRMD_RSC_ID);
@@ -222,39 +274,171 @@ lrmd_dispatch_internal(const char *buffer, ssize_t length, gpointer userdata)
         event.type = lrmd_event_exec_complete;
 
         event.params = xml2list(msg);
+    } else {
+        return 1;
     }
 
+    crm_trace("op %s notify event received", type);
     native->callback(&event);
 
     if (event.params) {
         g_hash_table_destroy(event.params);
     }
-    free_xml(msg);
     return 1;
 }
 
+static int
+lrmd_ipc_dispatch(const char *buffer, ssize_t length, gpointer userdata)
+{
+    lrmd_t *lrmd = userdata;
+    lrmd_private_t *native = lrmd->private;
+    xmlNode *msg;
+    int rc;
+
+    if (!native->callback) {
+        /* no callback set */
+        return 1;
+    }
+
+    msg = string2xml(buffer);
+    rc = lrmd_dispatch_internal(lrmd, msg);
+    free_xml(msg);
+    return rc;
+}
+
+#ifdef HAVE_GNUTLS_GNUTLS_H
+static void
+lrmd_free_xml(gpointer userdata)
+{
+    free_xml((xmlNode *) userdata);
+}
+
+static int
+lrmd_tls_connected(lrmd_t *lrmd)
+{
+    lrmd_private_t *native = lrmd->private;
+    if (native->session) {
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+
+static int
+lrmd_tls_dispatch(gpointer userdata)
+{
+    lrmd_t *lrmd = userdata;
+    lrmd_private_t *native = lrmd->private;
+    xmlNode *xml = NULL;
+    int rc = 0;
+
+    if (lrmd_tls_connected(lrmd) == FALSE) {
+        crm_trace("tls dispatch triggered after disconnect");
+        return 0;
+    }
+
+    crm_trace("tls_dispatch triggered");
+
+    /* First check if there are any pending notifies to process that came
+     * while we were waiting for replies earlier. */
+    if (native->pending_notify) {
+        GList *iter = NULL;
+        crm_trace("Processing pending notifies");
+        for (iter = native->pending_notify; iter; iter = iter->next) {
+            lrmd_dispatch_internal(lrmd, iter->data);
+        }
+        g_list_free_full(native->pending_notify, lrmd_free_xml);
+        native->pending_notify = NULL;
+    }
+
+    /* Next read the current buffer and see if there are any messages to handle. */
+    rc = lrmd_fd_ready(native->sock, 0);
+    if (rc == 0) {
+        /* nothing to read, see if any full messages are already in buffer. */
+        xml = lrmd_tls_get_next_msg(&native->recv_buf, NULL, NULL);
+    } else if (rc < 0) {
+        crm_info("Server disconnected while reading remote server msg.");
+        lrmd_tls_disconnect(lrmd);
+        return 0;
+    } else {
+        char *raw = NULL;
+        size_t raw_len = 0;
+        raw = crm_recv_remote_raw(native->session, TRUE, &raw_len);
+        if (!raw) {
+            crm_info("Server disconnected while reading remote server msg.");
+            lrmd_tls_disconnect(lrmd);
+            return 0;
+        }
+        xml = lrmd_tls_get_next_msg(&native->recv_buf, &raw, &raw_len);
+    }
+    while (xml) {
+        lrmd_dispatch_internal(lrmd, xml);
+        free_xml(xml);
+        xml = lrmd_tls_get_next_msg(&native->recv_buf, NULL, NULL);
+    }
+
+    return 1;
+}
+#endif
+
 /* Not used with mainloop */
+int lrmd_poll(lrmd_t *lrmd, int timeout)
+{
+    int fd = -1;
+    lrmd_private_t *native = lrmd->private;
+
+    switch (native->type) {
+    case LRMD_CLIENT_IPC:
+        fd = crm_ipc_get_fd(native->ipc);
+        break;
+    case LRMD_CLIENT_TLS:
+#ifdef HAVE_GNUTLS_GNUTLS_H
+        if (native->pending_notify) {
+            return 1;
+        } else if (native->recv_buf && strstr(native->recv_buf, REMOTE_LRMD_MSG_TERMINATOR)) {
+            return 1;
+        }
+
+        fd = native->sock;
+#endif
+        break;
+    }
+
+    return lrmd_fd_ready(fd, 0);
+}
+
 bool
 lrmd_dispatch(lrmd_t * lrmd)
 {
-    gboolean stay_connected = TRUE;
     lrmd_private_t *private = NULL;
 
     CRM_ASSERT(lrmd != NULL);
-    private = lrmd->private;
-    while (crm_ipc_ready(private->ipc)) {
-        if (crm_ipc_read(private->ipc) > 0) {
-            const char *msg = crm_ipc_buffer(private->ipc);
 
-            lrmd_dispatch_internal(msg, strlen(msg), lrmd);
+    private = lrmd->private;
+
+    switch (private->type) {
+    case LRMD_CLIENT_IPC:
+        while (crm_ipc_ready(private->ipc)) {
+            if (crm_ipc_read(private->ipc) > 0) {
+                const char *msg = crm_ipc_buffer(private->ipc);
+                lrmd_ipc_dispatch(msg, strlen(msg), lrmd);
+            }
         }
-        if (crm_ipc_connected(private->ipc) == FALSE) {
-            crm_err("Connection closed");
-            stay_connected = FALSE;
-        }
+        break;
+    case LRMD_CLIENT_TLS:
+#ifdef HAVE_GNUTLS_GNUTLS_H
+        lrmd_tls_dispatch(lrmd);
+#endif
+        break;
     }
 
-    return stay_connected;
+    if (lrmd_connected(lrmd) == FALSE) {
+        crm_err("Connection closed");
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 static xmlNode *
@@ -281,12 +465,12 @@ lrmd_create_op(const char *token, const char *op, xmlNode * data, enum lrmd_call
 }
 
 static void
-lrmd_connection_destroy(gpointer userdata)
+lrmd_ipc_connection_destroy(gpointer userdata)
 {
     lrmd_t *lrmd = userdata;
     lrmd_private_t *native = lrmd->private;
 
-    crm_info("connection destroyed");
+    crm_info("IPC connection destroyed");
 
     /* Prevent these from being cleaned up in lrmd_api_disconnect() */
     native->ipc = NULL;
@@ -299,6 +483,314 @@ lrmd_connection_destroy(gpointer userdata)
     }
 }
 
+#ifdef HAVE_GNUTLS_GNUTLS_H
+static void
+lrmd_tls_connection_destroy(gpointer userdata)
+{
+    lrmd_t *lrmd = userdata;
+    lrmd_private_t *native = lrmd->private;
+
+    crm_info("TLS connection destroyed");
+
+    if (native->session) {
+        gnutls_bye(*native->session, GNUTLS_SHUT_RDWR);
+        gnutls_deinit(*native->session);
+        gnutls_free(native->session);
+    }
+    if (native->psk_cred_c) {
+        gnutls_psk_free_client_credentials(native->psk_cred_c);
+    }
+    if (native->sock) {
+        close(native->sock);
+    }
+    if (native->process_notify) {
+        mainloop_destroy_trigger(native->process_notify);
+        native->process_notify = NULL;
+    }
+    if (native->pending_notify) {
+        g_list_free_full(native->pending_notify, lrmd_free_xml);
+        native->pending_notify = NULL;
+    }
+
+    free(native->recv_buf);
+    native->recv_buf = NULL;
+    native->source = 0;
+    native->sock = 0;
+    native->psk_cred_c = NULL;
+    native->session = NULL;
+    native->sock = 0;
+
+    if (native->callback) {
+        lrmd_event_data_t event = { 0, };
+        event.type = lrmd_event_disconnect;
+        native->callback(&event);
+    }
+    return;
+}
+
+/*!
+ * \internal
+ * \brief handles the recv buffer and parsing out msgs.
+ * \note new_data is owned by this function once it is passed in.
+ */
+xmlNode *
+lrmd_tls_get_next_msg(char **msg_buf, char **input, size_t *input_len)
+{
+    char *buf = NULL;
+    char *start = NULL;
+    char *new_data = 0;
+    size_t len = 0;
+    xmlNode *xml = NULL;
+
+    /* take ownership of all the buffers */
+    buf = *msg_buf;
+    *msg_buf = NULL;
+    if (input && input_len) {
+        new_data = *input;
+        len = *input_len;
+        *input = NULL;
+        *input_len = 0;
+    }
+
+    /* If we have previous data in our msg buffer, add input data to the end */
+    if (buf && new_data) {
+        int old_len = strlen(buf);
+
+        /* add our new msg to our previous partial msg. */
+        buf = realloc(buf, strlen(buf) + len + 1);
+        memcpy(buf+old_len, new_data, len);
+        buf[old_len+len] = '\0';
+        free(new_data);
+        new_data = NULL;
+
+    }
+    /* if msg buf was empty, set it to whatever input is */
+    if (!buf) {
+        buf = new_data;
+    }
+
+    /* MSGS are separated by a '\r\n\r\n'. Split a message off the buffer and return it. */
+    start = buf;
+    while (!xml && start) {
+        char *end = strstr(start, REMOTE_LRMD_MSG_TERMINATOR);
+
+        /* grab the message */
+        if (!end) {
+            break;
+        }
+        end[0] = '\0';
+        end += strlen(REMOTE_LRMD_MSG_TERMINATOR);
+
+        xml = string2xml(start);
+        if (xml == NULL) {
+            crm_err("Couldn't parse: '%.120s'", start);
+        }
+        start = end;
+    }
+
+    if (start) {
+        /* we have a partial msg left over, save it until next time */
+        *msg_buf = strdup(start);
+    }
+
+    free(buf);
+    return xml;
+}
+
+static xmlNode *
+lrmd_tls_recv_reply(lrmd_t *lrmd, int total_timeout, int expected_reply_id)
+{
+    lrmd_private_t *native = lrmd->private;
+    xmlNode *xml = NULL;
+    int ret;
+    size_t request_len = 0;
+    time_t start = time(NULL);
+    char *raw_request = NULL;
+    const char *msg_type = NULL;
+    int reply_id = 0;
+    int remaining_timeout = 0;
+
+    if (total_timeout == 0) {
+        total_timeout = 10000;
+    } else if (total_timeout == -1) {
+        total_timeout = 30000;
+    }
+
+    while (!xml) {
+
+        xml = lrmd_tls_get_next_msg(&native->recv_buf, &raw_request, &request_len);
+        if (!xml) {
+            /* read some more off the tls buffer if we still have time left. */
+            if (remaining_timeout) {
+                remaining_timeout = remaining_timeout - ((time(NULL) - start) * 1000);
+            } else {
+                remaining_timeout = total_timeout;
+            }
+            if (remaining_timeout <= 0) {
+                crm_err("Timed out (%dms) waiting for reply with id %d", total_timeout, expected_reply_id);
+                return NULL;
+            }
+
+            ret = lrmd_fd_ready(native->sock, remaining_timeout);
+            raw_request = NULL;
+
+            if (ret == 0) {
+                crm_err("poll timed out (%d ms) while waiting to receive msg", remaining_timeout);
+                return NULL;
+            } else if (ret < 0) {
+                crm_err("poll returned error while waiting for msg, rc = %d", ret);
+                return NULL;
+            }
+
+            raw_request = crm_recv_remote_raw(native->session, TRUE, &request_len);
+            if (!raw_request) {
+                crm_err("Failed to read msg after poll");
+                return NULL;
+            }
+            continue;
+        }
+
+        crm_element_value_int(xml, F_LRMD_REMOTE_MSG_ID, &reply_id);
+        msg_type = crm_element_value(xml, F_LRMD_REMOTE_MSG_TYPE);
+
+        if (!msg_type) {
+            crm_err("Empty msg type received while waiting for reply");
+            free_xml(xml);
+            xml = NULL;
+        } else if (safe_str_eq(msg_type, "notify")) {
+           /* got a notify while waiting for reply, trigger the notify to be processed later */
+            crm_info("queueing notify");
+            native->pending_notify = g_list_append(native->pending_notify, xml);
+            if (native->process_notify) {
+                crm_info("notify trigger set.");
+                mainloop_set_trigger(native->process_notify);
+            }
+            xml = NULL;
+        } else if (safe_str_neq(msg_type, "reply")) {
+            /* msg isn't a reply, make some noise */
+            crm_err("Expected a reply, got %s", msg_type);
+            free_xml(xml);
+            xml = NULL;
+        } else if (reply_id != expected_reply_id) {
+            crm_err("Got outdated reply, expected id %d got id %d",  expected_reply_id, reply_id);
+            free_xml(xml);
+            xml = NULL;
+        }
+    }
+
+    if (native->recv_buf && native->process_notify) {
+        mainloop_set_trigger(native->process_notify);
+    }
+
+    return xml;
+}
+
+int
+lrmd_tls_send_msg(gnutls_session *session, xmlNode *msg, uint32_t id, const char *msg_type)
+{
+    int rc = -1;
+    char *buf;
+
+    crm_xml_add_int(msg, F_LRMD_REMOTE_MSG_ID, id);
+    crm_xml_add(msg, F_LRMD_REMOTE_MSG_TYPE, msg_type);
+
+    buf = dump_xml_unformatted(msg);
+    if (!buf) {
+        crm_err("Remote lrmd msg send failed, invalid xml!");
+        return -1;
+    }
+    rc = crm_send_remote_msg_raw(session, buf, strlen(buf), TRUE);
+    free(buf);
+    buf = NULL;
+
+    if (rc < 0) {
+        crm_err("Failed to send remote lrmd tls msg, rc = %d" , rc);
+        return rc;
+    }
+    rc = crm_send_remote_msg_raw(session, REMOTE_LRMD_MSG_TERMINATOR, strlen(REMOTE_LRMD_MSG_TERMINATOR), TRUE);
+
+    return rc;
+}
+
+static int
+lrmd_tls_send_recv(lrmd_t *lrmd, xmlNode *msg, int timeout, xmlNode **reply)
+{
+    int rc = 0;
+    xmlNode *xml = NULL;
+    lrmd_private_t *native = lrmd->private;
+
+    if (lrmd_tls_connected(lrmd) == FALSE) {
+        return -1;
+    }
+
+    global_remote_msg_id++;
+    if (global_remote_msg_id <= 0) {
+        global_remote_msg_id = 1;
+    }
+
+    rc = lrmd_tls_send_msg(native->session, msg, global_remote_msg_id, "request");
+    if (rc <= 0) {
+        crm_err("Remote lrmd send failed, disconnecting");
+        lrmd_tls_disconnect(lrmd);
+        return -ENOTCONN;
+    }
+
+    xml = lrmd_tls_recv_reply(lrmd, timeout, global_remote_msg_id);
+    if (!xml) {
+        crm_err("Remote lrmd never received reply for request id %d. disconnecting.", global_remote_msg_id);
+        lrmd_tls_disconnect(lrmd);
+        return -ENOTCONN;
+    }
+
+    if (reply) {
+        *reply = xml;
+    } else {
+        free_xml(xml);
+    }
+
+    return rc;
+}
+#endif
+
+static int
+lrmd_send_xml(lrmd_t *lrmd, xmlNode *msg, int timeout, xmlNode **reply)
+{
+    int rc = -1;
+    lrmd_private_t *native = lrmd->private;
+
+    switch (native->type) {
+    case LRMD_CLIENT_IPC:
+        rc = crm_ipc_send(native->ipc, msg, crm_ipc_client_response, timeout, reply);
+        break;
+    case LRMD_CLIENT_TLS:
+#ifdef HAVE_GNUTLS_GNUTLS_H
+        rc = lrmd_tls_send_recv(lrmd, msg, timeout, reply);
+#endif
+        break;
+    }
+
+    return rc;
+}
+
+static int
+lrmd_connected(lrmd_t *lrmd)
+{
+    lrmd_private_t *native = lrmd->private;
+
+    switch (native->type) {
+    case LRMD_CLIENT_IPC:
+        return crm_ipc_connected(native->ipc);
+        break;
+    case LRMD_CLIENT_TLS:
+#ifdef HAVE_GNUTLS_GNUTLS_H
+        return lrmd_tls_connected(lrmd);
+#endif
+        break;
+    }
+
+    return 0;
+}
+
 static int
 lrmd_send_command(lrmd_t * lrmd, const char *op, xmlNode * data, xmlNode ** output_data, int timeout,   /* ms. defaults to 1000 if set to 0 */
                   enum lrmd_call_options options)
@@ -309,7 +801,7 @@ lrmd_send_command(lrmd_t * lrmd, const char *op, xmlNode * data, xmlNode ** outp
     xmlNode *op_msg = NULL;
     xmlNode *op_reply = NULL;
 
-    if (!native->ipc) {
+    if (!lrmd_connected(lrmd)) {
         return -ENOTCONN;
     }
 
@@ -320,6 +812,8 @@ lrmd_send_command(lrmd_t * lrmd, const char *op, xmlNode * data, xmlNode ** outp
 
     CRM_CHECK(native->token != NULL,;);
 
+    crm_trace("sending %s op to lrmd", op);
+
     op_msg = lrmd_create_op(native->token, op, data, options);
 
     if (op_msg == NULL) {
@@ -328,7 +822,7 @@ lrmd_send_command(lrmd_t * lrmd, const char *op, xmlNode * data, xmlNode ** outp
 
     crm_xml_add_int(op_msg, F_LRMD_TIMEOUT, timeout);
 
-    rc = crm_ipc_send(native->ipc, op_msg, crm_ipc_client_response, timeout, &op_reply);
+    rc = lrmd_send_xml(lrmd, op_msg, timeout, &op_reply);
     free_xml(op_msg);
 
     if (rc < 0) {
@@ -339,21 +833,21 @@ lrmd_send_command(lrmd_t * lrmd, const char *op, xmlNode * data, xmlNode ** outp
 
     rc = pcmk_ok;
     crm_element_value_int(op_reply, F_LRMD_CALLID, &reply_id);
-    crm_trace("reply received");
+    crm_trace("%s op reply received", op);
     if (crm_element_value_int(op_reply, F_LRMD_RC, &rc) != 0) {
         rc = -ENOMSG;
         goto done;
     }
+
+    crm_log_xml_trace(op_reply, "Reply");
 
     if (output_data) {
         *output_data = op_reply;
         op_reply = NULL;    /* Prevent subsequent free */
     }
 
-    crm_log_xml_trace(op_reply, "Reply");
-
   done:
-    if (crm_ipc_connected(native->ipc) == FALSE) {
+    if (lrmd_connected(lrmd) == FALSE) {
         crm_err("LRMD disconnected");
     }
 
@@ -362,14 +856,59 @@ lrmd_send_command(lrmd_t * lrmd, const char *op, xmlNode * data, xmlNode ** outp
 }
 
 static int
-lrmd_api_connect(lrmd_t * lrmd, const char *name, int *fd)
+lrmd_handshake(lrmd_t *lrmd, const char *name)
+{
+    int rc = pcmk_ok;
+    lrmd_private_t *native = lrmd->private;
+    xmlNode *reply = NULL;
+    xmlNode *hello = create_xml_node(NULL, "lrmd_command");
+
+    crm_xml_add(hello, F_TYPE, T_LRMD);
+    crm_xml_add(hello, F_LRMD_OPERATION, CRM_OP_REGISTER);
+    crm_xml_add(hello, F_LRMD_CLIENTNAME, name);
+
+    rc = lrmd_send_xml(lrmd, hello, -1, &reply);
+
+    if (rc < 0) {
+        crm_perror(LOG_DEBUG, "Couldn't complete registration with the lrmd API: %d", rc);
+        rc = -ECOMM;
+    } else if (reply == NULL) {
+        crm_err("Did not receive registration reply");
+        rc = -EPROTO;
+    } else {
+        const char *msg_type = crm_element_value(reply, F_LRMD_OPERATION);
+        const char *tmp_ticket = crm_element_value(reply, F_LRMD_CLIENTID);
+
+        if (safe_str_neq(msg_type, CRM_OP_REGISTER)) {
+            crm_err("Invalid registration message: %s", msg_type);
+            crm_log_xml_err(reply, "Bad reply");
+            rc = -EPROTO;
+        } else if (tmp_ticket == NULL) {
+            crm_err("No registration token provided");
+            crm_log_xml_err(reply, "Bad reply");
+            rc = -EPROTO;
+        } else {
+            crm_trace("Obtained registration token: %s", tmp_ticket);
+            native->token = strdup(tmp_ticket);
+            rc = pcmk_ok;
+        }
+    }
+
+    free_xml(reply);
+    free_xml(hello);
+
+    return rc;
+}
+
+static int
+lrmd_ipc_connect(lrmd_t * lrmd, int *fd)
 {
     int rc = pcmk_ok;
     lrmd_private_t *native = lrmd->private;
 
     static struct ipc_client_callbacks lrmd_callbacks = {
-        .dispatch = lrmd_dispatch_internal,
-        .destroy = lrmd_connection_destroy
+        .dispatch = lrmd_ipc_dispatch,
+        .destroy = lrmd_ipc_connection_destroy
     };
 
     crm_info("Connecting to lrmd");
@@ -392,55 +931,266 @@ lrmd_api_connect(lrmd_t * lrmd, const char *name, int *fd)
         rc = -ENOTCONN;
     }
 
-    if (!rc) {
-        xmlNode *reply = NULL;
-        xmlNode *hello = create_xml_node(NULL, "lrmd_command");
+    return rc;
+}
 
-        crm_xml_add(hello, F_TYPE, T_LRMD);
-        crm_xml_add(hello, F_LRMD_OPERATION, CRM_OP_REGISTER);
-        crm_xml_add(hello, F_LRMD_CLIENTNAME, name);
 
-        rc = crm_ipc_send(native->ipc, hello, crm_ipc_client_response, -1, &reply);
+#ifdef HAVE_GNUTLS_GNUTLS_H
+extern gnutls_session *create_psk_tls_session(int csock, int type, void *credentials);
 
-        if (rc < 0) {
-            crm_perror(LOG_DEBUG, "Couldn't complete registration with the lrmd API: %d", rc);
-            rc = -ECOMM;
-        } else if (reply == NULL) {
-            crm_err("Did not receive registration reply");
-            rc = -EPROTO;
-        } else {
-            const char *msg_type = crm_element_value(reply, F_LRMD_OPERATION);
-            const char *tmp_ticket = crm_element_value(reply, F_LRMD_CLIENTID);
+static int
+lrmd_tcp_connect(const char *host, int port)
+{
+    struct addrinfo *res;
+    struct addrinfo *rp;
+    struct addrinfo hints;
+    const char *server = host;
+    int ret_ga;
+    int sock;
 
-            if (safe_str_neq(msg_type, CRM_OP_REGISTER)) {
-                crm_err("Invalid registration message: %s", msg_type);
-                crm_log_xml_err(reply, "Bad reply");
-                rc = -EPROTO;
-            } else if (tmp_ticket == NULL) {
-                crm_err("No registration token provided");
-                crm_log_xml_err(reply, "Bad reply");
-                rc = -EPROTO;
-            } else {
-                crm_trace("Obtained registration token: %s", tmp_ticket);
-                native->token = strdup(tmp_ticket);
-                rc = pcmk_ok;
-            }
+    /* getaddrinfo */
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC;    /* Allow IPv4 or IPv6 */
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_CANONNAME;
+
+    crm_debug("Looking up %s", server);
+    ret_ga = getaddrinfo(server, NULL, &hints, &res);
+    if (ret_ga) {
+        crm_err("getaddrinfo: %s", gai_strerror(ret_ga));
+        return -1;
+    }
+
+    if (!res || !res->ai_addr) {
+        crm_err("getaddrinfo failed");
+        return -1;
+    }
+
+    for (rp = res; rp != NULL; rp = rp->ai_next) {
+        struct sockaddr *addr = rp->ai_addr;
+        int flag = 0;
+        if (!addr) {
+            continue;
         }
 
-        free_xml(reply);
-        free_xml(hello);
+        if (rp->ai_canonname) {
+            server = res->ai_canonname;
+        }
+        crm_debug("Got address %s for %s", server, host);
+
+        /* create socket */
+        sock = socket(rp->ai_family, SOCK_STREAM, IPPROTO_TCP);
+        if (sock == -1) {
+            crm_err("Socket creation failed for remote lrmd tls client connection.");
+            continue;
+        }
+        if (addr->sa_family == AF_INET6) {
+            struct sockaddr_in6 *addr_in = (struct sockaddr_in6 *) addr;
+            addr_in->sin6_port = htons(port);
+        } else {
+            struct sockaddr_in *addr_in = (struct sockaddr_in *) addr;
+            addr_in->sin_port = htons(port);
+            crm_info("Attempting to connect to remote lrmd at %s:%d", inet_ntoa(addr_in->sin_addr), port);
+        }
+
+        if (connect(sock, rp->ai_addr, rp->ai_addrlen) == 0) {
+            if ((flag = fcntl(sock, F_GETFL)) >= 0) {
+                if (fcntl(sock, F_SETFL, flag | O_NONBLOCK) < 0) {
+                    crm_err( "fcntl() write failed");
+                    close(sock);
+                    sock = -1;
+                    continue;
+                }
+            }
+            break;                  /* Success */
+        }
+
+        close(sock);
+        sock = -1;
+    }
+    freeaddrinfo(res);
+
+    return sock;
+}
+
+int lrmd_tls_set_key(gnutls_datum_t *key, const char *location)
+{
+    FILE *stream;
+    int read_len = 256;
+    int cur_len = 0;
+    int buf_len = read_len;
+    static char *key_cache = NULL;
+    static size_t key_cache_len = 0;
+    static time_t key_cache_updated;
+
+    if (key_cache) {
+        time_t now = time(NULL);
+
+        if ((now - key_cache_updated) < 60) {
+            key->data = gnutls_malloc(key_cache_len + 1);
+            key->size = key_cache_len;
+            memcpy(key->data, key_cache, key_cache_len);
+
+            crm_debug("using cached LRMD key");
+            return 0;
+        } else {
+            key_cache_len = 0;
+            key_cache_updated = 0;
+            free(key_cache);
+            key_cache = NULL;
+            crm_debug("clearing lrmd key cache");
+        }
+    }
+
+    stream = fopen(location, "r");
+    if (!stream) {
+        return -1;
+    }
+
+    key->data = gnutls_malloc(read_len);
+    while (!feof(stream)) {
+        char next;
+        if (cur_len == buf_len) {
+            buf_len = cur_len + read_len;
+            key->data = gnutls_realloc(key->data, buf_len);
+        }
+        next = fgetc(stream);
+        if (next == EOF && feof(stream)) {
+            break;
+        }
+
+        key->data[cur_len] = next;
+        cur_len++;
+    }
+    fclose(stream);
+
+    key->size = cur_len;
+    if (!cur_len) {
+        gnutls_free(key->data);
+        key->data = 0;
+        return -1;
+    }
+
+    if (!key_cache) {
+        key_cache = calloc(1, key->size+1);
+        memcpy(key_cache, key->data, key->size);
+
+        key_cache_len =  key->size;
+        key_cache_updated = time(NULL);
+    }
+
+    return 0;
+}
+
+static int
+lrmd_tls_key_cb(gnutls_session_t session, char **username, gnutls_datum_t *key)
+{
+    int rc = 0;
+
+    if (lrmd_tls_set_key(key, DEFAULT_REMOTE_KEY_LOCATION)) {
+        rc = lrmd_tls_set_key(key, ALT_REMOTE_KEY_LOCATION);
+    }
+    if (rc) {
+        crm_err("No lrmd remote key found");
+        return -1;
+    }
+
+    *username = gnutls_malloc(strlen(DEFAULT_REMOTE_USERNAME) + 1);
+    strcpy(*username, DEFAULT_REMOTE_USERNAME);
+
+    return rc;
+}
+
+#endif
+
+#ifdef HAVE_GNUTLS_GNUTLS_H
+extern gnutls_psk_client_credentials_t psk_cred_s;
+#endif
+
+static int
+lrmd_tls_connect(lrmd_t *lrmd, int *fd)
+{
+#ifdef HAVE_GNUTLS_GNUTLS_H
+    static struct mainloop_fd_callbacks lrmd_tls_callbacks =
+        {
+            .dispatch = lrmd_tls_dispatch,
+            .destroy = lrmd_tls_connection_destroy,
+        };
+
+    lrmd_private_t *native = lrmd->private;
+    static int gnutls_init = 0;
+    int sock;
+
+    if (!gnutls_init) {
+        gnutls_global_init();
+    }
+
+    gnutls_psk_allocate_client_credentials(&native->psk_cred_c);
+    gnutls_psk_set_client_credentials_function(native->psk_cred_c, lrmd_tls_key_cb);
+    sock = lrmd_tcp_connect(native->server, native->port);
+    if (sock <= 0) {
+        crm_err("Could not establish remote lrmd connection to %s", native->server);
+        lrmd_tls_connection_destroy(lrmd);
+        return -ENOTCONN;
+    }
+
+    native->session = create_psk_tls_session(sock, GNUTLS_CLIENT, native->psk_cred_c);
+    if (native->session == NULL) {
+        crm_perror(LOG_ERR, "Session creation for %s:%d failed", native->server, native->port);
+        close(sock);
+        lrmd_tls_connection_destroy(lrmd);
+        return -1;
+    }
+
+    crm_info("Remote lrmd client TLS connection established with server %s:%d", native->server, native->port);
+
+    native->sock = sock;
+    if (fd) {
+        *fd = sock;
+    } else {
+        char name[256] = { 0, };
+        snprintf(name, 128, "remote-lrmd-%s:%d", native->server, native->port);
+
+        native->process_notify = mainloop_add_trigger(G_PRIORITY_HIGH, lrmd_tls_dispatch, lrmd);
+        native->source = mainloop_add_fd(name, G_PRIORITY_HIGH, native->sock, lrmd, &lrmd_tls_callbacks);
+    }
+    return pcmk_ok;
+#else
+    crm_err("TLS not enabled for this build.");
+    return -ENOTCONN;
+#endif
+}
+
+static int
+lrmd_api_connect(lrmd_t * lrmd, const char *name, int *fd)
+{
+    int rc = -ENOTCONN;
+    lrmd_private_t *native = lrmd->private;
+
+    switch (native->type) {
+    case LRMD_CLIENT_IPC:
+        rc = lrmd_ipc_connect(lrmd, fd);
+        break;
+    case LRMD_CLIENT_TLS:
+        rc = lrmd_tls_connect(lrmd, fd);
+        break;
+    }
+
+    if (rc == pcmk_ok) {
+        rc = lrmd_handshake(lrmd, name);
+    }
+
+    if (rc != pcmk_ok) {
+        lrmd_api_disconnect(lrmd);
     }
 
     return rc;
 }
 
-static int
-lrmd_api_disconnect(lrmd_t * lrmd)
+static void
+lrmd_ipc_disconnect(lrmd_t *lrmd)
 {
     lrmd_private_t *native = lrmd->private;
-
-    crm_info("Disconnecting from lrmd service");
-
     if (native->source != NULL) {
         /* Attached to mainloop */
         mainloop_del_ipc_client(native->source);
@@ -453,6 +1203,53 @@ lrmd_api_disconnect(lrmd_t * lrmd)
         native->ipc = NULL;
         crm_ipc_close(ipc);
         crm_ipc_destroy(ipc);
+    }
+}
+
+#ifdef HAVE_GNUTLS_GNUTLS_H
+static void
+lrmd_tls_disconnect(lrmd_t *lrmd)
+{
+    lrmd_private_t *native = lrmd->private;
+
+    if (native->session) {
+        gnutls_bye(*native->session, GNUTLS_SHUT_RDWR);
+        gnutls_deinit(*native->session);
+        gnutls_free(native->session);
+        native->session = 0;
+    }
+
+    if (native->source != NULL) {
+        /* Attached to mainloop */
+        mainloop_del_ipc_client(native->source);
+        native->source = NULL;
+
+    } else if(native->sock) {
+        close(native->sock);
+    }
+
+    if (native->pending_notify) {
+        g_list_free_full(native->pending_notify, lrmd_free_xml);
+        native->pending_notify = NULL;
+    }
+}
+#endif
+
+static int
+lrmd_api_disconnect(lrmd_t *lrmd)
+{
+    lrmd_private_t *native = lrmd->private;
+
+    crm_info("Disconnecting from lrmd service");
+    switch (native->type) {
+    case LRMD_CLIENT_IPC:
+        lrmd_ipc_disconnect(lrmd);
+        break;
+    case LRMD_CLIENT_TLS:
+#ifdef HAVE_GNUTLS_GNUTLS_H
+        lrmd_tls_disconnect(lrmd);
+#endif
+        break;
     }
 
     free(native->token);
@@ -963,6 +1760,7 @@ lrmd_api_new(void)
     pvt = calloc(1, sizeof(lrmd_private_t));
     new_lrmd->cmds = calloc(1, sizeof(lrmd_api_operations_t));
 
+    pvt->type = LRMD_CLIENT_IPC;
     new_lrmd->private = pvt;
 
     new_lrmd->cmds->connect = lrmd_api_connect;
@@ -985,14 +1783,39 @@ lrmd_api_new(void)
     return new_lrmd;
 }
 
+lrmd_t *
+lrmd_remote_api_new(const char *server, int port)
+{
+#ifdef HAVE_GNUTLS_GNUTLS_H
+    lrmd_t *new_lrmd = lrmd_api_new();
+    lrmd_private_t *native = new_lrmd->private;
+
+    native->type = LRMD_CLIENT_TLS;
+    native->server = strdup(server);
+    native->port = port ? port : DEFAULT_REMOTE_PORT;
+    return new_lrmd;
+#else
+    crm_err("GNUTLS is not enabled for this build, remote LRMD client can not be created");
+    return NULL;
+#endif
+
+}
+
 void
 lrmd_api_delete(lrmd_t * lrmd)
 {
     if (!lrmd) {
         return;
     }
+
     lrmd->cmds->disconnect(lrmd);       /* no-op if already disconnected */
     free(lrmd->cmds);
+#ifdef HAVE_GNUTLS_GNUTLS_H
+    if (1) { /* this is done to avoid compiler warnings */
+        lrmd_private_t *native = lrmd->private;
+        free(native->server);
+    }
+#endif
     free(lrmd->private);
     free(lrmd);
 }

@@ -39,7 +39,7 @@
 #  undef KEYFILE
 #  include <gnutls/gnutls.h>
 extern gnutls_anon_client_credentials anon_cred_c;
-extern gnutls_session *create_tls_session(int csock, int type);
+extern gnutls_session *create_anon_tls_session(int csock, int type);
 
 const int kx_prio[] = {
     GNUTLS_KX_ANON_DH,
@@ -265,7 +265,7 @@ cib_tls_signon(cib_t * cib, struct remote_connection_s *connection)
         gnutls_anon_allocate_client_credentials(&anon_cred_c);
 
         /* bind the socket to GnuTls lib */
-        connection->session = create_tls_session(sock, GNUTLS_CLIENT);
+        connection->session = create_anon_tls_session(sock, GNUTLS_CLIENT);
         if (connection->session == NULL) {
             crm_perror(LOG_ERR, "Session creation for %s:%d failed", server, private->port);
             close(sock);
