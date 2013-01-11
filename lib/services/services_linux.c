@@ -50,6 +50,18 @@ set_fd_opts(int fd, int opts)
     }
 }
 
+static int
+read_ready(int fd)
+{
+    struct pollfd fds = { 0, };
+    if (fd <= 0) {
+        return -ENOTCONN;
+    }
+    fds.fd = fd;
+    fds.events = POLLIN;
+    return poll(&fds, 1, 0);
+}
+
 static gboolean
 read_output(int fd, svc_action_t *op)
 {
@@ -77,6 +89,11 @@ read_output(int fd, svc_action_t *op)
     }
 
     do {
+        rc = read_ready(fd);
+        if (rc <= 0) {
+            rc = FALSE;
+            break;
+        }
         rc = read(fd, buf, buf_read_len);
         if (rc > 0) {
             buf[rc] = 0;
