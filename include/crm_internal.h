@@ -208,6 +208,11 @@ int crm_send_remote_msg(void *session, xmlNode * msg, gboolean encrypted);
 int crm_recv_remote_ready(void *session, gboolean encrypted, int timeout_ms);
 xmlNode *crm_parse_remote_buffer(char **msg_buf);
 int crm_remote_tcp_connect(const char *host, int port);
+int crm_remote_tcp_connect_async(const char *host,
+    int port,
+    int timeout, /*ms*/
+    void *userdata,
+    void (*callback)(void *userdata, int sock));
 
 #ifdef HAVE_GNUTLS_GNUTLS_H
 /*!
