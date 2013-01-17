@@ -78,6 +78,7 @@ typedef struct lrmd_private_s {
     crm_ipc_t *ipc;
 
     /* TLS parameters */
+    char *remote_nodename;
 #ifdef HAVE_GNUTLS_GNUTLS_H
     char *server;
     int port;
@@ -191,6 +192,7 @@ lrmd_copy_event(lrmd_event_data_t * event)
     copy->op_type = event->op_type ? strdup(event->op_type) : NULL;
     copy->user_data = event->user_data ? strdup(event->user_data) : NULL;
     copy->output = event->output ? strdup(event->output) : NULL;
+    copy->remote_nodename = event->remote_nodename ? strdup(event->remote_nodename) : NULL;
 
     if (event->params) {
         copy->params = g_hash_table_new_full(crm_str_hash,
@@ -216,6 +218,7 @@ lrmd_free_event(lrmd_event_data_t * event)
     free((char *)event->op_type);
     free((char *)event->user_data);
     free((char *)event->output);
+    free((char *)event->remote_nodename);
     if (event->params) {
         g_hash_table_destroy(event->params);
     }
@@ -235,6 +238,7 @@ lrmd_dispatch_internal(lrmd_t *lrmd, xmlNode *msg)
         return 1;
     }
 
+    event.remote_nodename = native->remote_nodename;
     type = crm_element_value(msg, F_LRMD_OPERATION);
     crm_element_value_int(msg, F_LRMD_CALLID, &event.call_id);
     event.rsc_id = crm_element_value(msg, F_LRMD_RSC_ID);
@@ -506,6 +510,7 @@ lrmd_tls_connection_destroy(gpointer userdata)
 
     if (native->callback) {
         lrmd_event_data_t event = { 0, };
+        event.remote_nodename = native->remote_nodename;
         event.type = lrmd_event_disconnect;
         native->callback(&event);
     }
@@ -1600,14 +1605,19 @@ lrmd_api_new(void)
 }
 
 lrmd_t *
-lrmd_remote_api_new(const char *server, int port)
+lrmd_remote_api_new(const char *nodename, const char *server, int port)
 {
 #ifdef HAVE_GNUTLS_GNUTLS_H
     lrmd_t *new_lrmd = lrmd_api_new();
     lrmd_private_t *native = new_lrmd->private;
 
+    if (!nodename && !server) {
+        return NULL;
+    }
+
     native->type = LRMD_CLIENT_TLS;
-    native->server = strdup(server);
+    native->remote_nodename = nodename ? strdup(nodename) : strdup(server);
+    native->server = server ? strdup(server) : strdup(nodename);
     native->port = port ? port : DEFAULT_REMOTE_PORT;
     return new_lrmd;
 #else
@@ -1620,16 +1630,16 @@ lrmd_remote_api_new(const char *server, int port)
 void
 lrmd_api_delete(lrmd_t * lrmd)
 {
+    lrmd_private_t *native;
     if (!lrmd) {
         return;
     }
+    native = lrmd->private;
     lrmd->cmds->disconnect(lrmd);       /* no-op if already disconnected */
     free(lrmd->cmds);
 #ifdef HAVE_GNUTLS_GNUTLS_H
-    { /* this is done to avoid compiler warnings */
-        lrmd_private_t *native = lrmd->private;
-        free(native->server);
-    }
+    free(native->server);
+    free(native->remote_nodename);
 #endif
     free(lrmd->private);
     free(lrmd);
