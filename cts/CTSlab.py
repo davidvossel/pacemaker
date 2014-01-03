@@ -141,7 +141,7 @@ def usage(arg, status=1):
     print "\t [--xmit-loss lost-rate(0.0-1.0)]"
     print "\t [--recv-loss lost-rate(0.0-1.0)]"
     print "\t [--standby (1 | 0 | yes | no)]"
-    print "\t [--fencing (1 | 0 | yes | no | rhcs | lha | openstack )]"
+    print "\t [--fencing (1 | 0 | yes | no | rhcs | lha | openstack | docker )]"
     print "\t [--stonith-type type]"
     print "\t [--stonith-args name=value]"
     print "\t [--bsc]"
@@ -243,6 +243,10 @@ if __name__ == '__main__':
                Environment["DoStonith"]=1
                Environment["stonith-type"] = "fence_xvm"
                Environment["stonith-params"] = "pcmk_arg_map=domain:uname,delay=0"
+           elif args[i+1] == "docker":
+               Environment["DoStonith"]=1
+               Environment["stonith-type"] = "fence_docker_cts"
+               Environment["stonith-params"] = "host=172.17.42.1"
            elif args[i+1] == "scsi":
                Environment["DoStonith"]=1
                Environment["stonith-type"] = "fence_scsi"

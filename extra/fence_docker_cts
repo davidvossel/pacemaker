@@ -1,0 +1,248 @@
+#!/bin/bash
+#
+# Copyright (c) 2014 David Vossel <dvossel@redhat.com>
+#					All Rights Reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of version 2 of the GNU General Public License as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it would be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+# Further, this software is distributed without any warranty that it is
+# free of the rightful claim of any third person regarding infringement
+# or the like.  Any license provided herein, whether implied or
+# otherwise, applies only to this software file.  Patent licenses, if
+# any, provided herein do not apply to combinations of this program with
+# other software, or any other product whatsoever.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write the Free Software Foundation,
+# Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+#######################################################################
+
+port=""
+action="list"		 # Default fence action
+host="unix:///var/run/docker.sock"
+
+function usage()
+{
+cat <<EOF
+`basename $0` - A fencing agent for docker containers for testing purposes
+ 
+Usage: `basename $0` -o|--action [-n|--port] [options]
+Options:
+ -h, --help 		This text
+ -V, --version		Version information
+ 
+Commands:
+ -o, --action		Action to perform: on|off|reboot|status|monitor
+ -n, --port 		The name of a container to control/check
+
+Additional Options:
+ -h, --host		Docker daemon host connection address. 
+EOF
+	exit 0;
+}
+
+function metadata()
+{
+cat <<EOF
+<?xml version="1.0" ?>
+<resource-agent name="fence_docker_cts" shortdesc="docker fencing agent for testing purposes" >
+	<longdesc>
+		fence_docker_cts fences docker containers for testing purposes.
+	</longdesc>
+	<parameters>
+	<parameter name="action" unique="1" required="0">
+		<getopt mixed="-o, --action=[action]" />
+		<content type="string" default="reboot" />
+		<shortdesc lang="en">Fencing Action</shortdesc>
+	</parameter>
+	<parameter name="port" unique="1" required="0">
+		<getopt mixed="-n, --port=[port]" />
+		<content type="string" />
+		<shortdesc lang="en">The name/id of docker container to control/check</shortdesc>
+	</parameter>
+	<parameter name="host" unique="0" required="1">
+		<getopt mixed="-h, --host=<ip-address>[:port]" />
+		<content type="string" />
+		<shortdesc lang="en">The connection address of the host's docker daemon</shortdesc>
+	</parameter>
+	</parameters>
+	<actions>
+	<action name="on" />
+	<action name="off" />
+	<action name="reboot" />
+	<action name="status" />
+	<action name="list" />
+	<action name="monitor" />
+	<action name="metadata" />
+	</actions>
+</resource-agent>
+EOF
+	exit 0;
+}
+
+function docker_log() {
+	printf "$*\n" 1>&2
+}
+
+# stdin option processing
+if [ -z $1 ]; then
+	# If there are no command line args, look for options from stdin
+	while read line; do
+	echo "cur line is $line"
+	case $line in 
+			option=*|action=*) action=`echo $line | sed s/.*=//`;;
+			port=*)			port=`echo $line | sed s/.*=//`;;
+			node=*)			port=`echo $line | sed s/.*=//`;;
+		host=*)			host=`echo $line | sed s/.*=//`;;
+		--);;
+		*) docker_log "Invalid command: $line";;
+	esac
+	done
+fi
+
+# Command line option processing
+while true ; do
+	if [ -z "$1" ]; then
+		break;
+	fi
+	case "$1" in
+	-o|--action|--option) action=$2;	shift; shift;;
+	-n|--port)			port=$2;	  shift; shift;;
+	-h|--host)			host=$2;   shift; shift;;
+	-V|--version) echo "1.0.0"; exit 0;;
+	--help|-h) 
+		usage;
+		exit 0;;
+	--) shift ; break ;;
+	*) docker_log "Unknown option: $1. See --help for details."; exit 1;;
+	esac
+done
+
+action=`echo $action | tr 'A-Z' 'a-z'`
+case $action in
+	hostlist|list) action=list;;
+	stat|status)   action=status;;
+	restart|reboot|reset)  action=reboot;;
+	poweron|on)	action=start;;
+	poweroff|off)  action=stop;;
+esac
+
+dockopts="-H $host"
+
+function fence_done() 
+{
+	if [ $1 -eq 0 ]; then
+		docker_log "Operation $action (port=$port) passed"
+	else
+		docker_log "Operation $action (port=$port) failed: $1"
+	fi
+	exit $1
+}
+
+fence_on()
+{
+	docker $dockopts ps > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		docker_log "could not contact host docker daemon"
+		fence_done 1
+	fi
+
+	docker $dockopts inspect $port | grep 'Running\":.*false' > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		docker $dockopts start $port > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			docker_log "Failed to start $port"
+			fence_done 1
+		fi
+	fi
+}
+
+fence_off()
+{
+	docker $dockopts ps > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		docker_log "could not contact host docker daemon"
+		fence_done 1
+	fi
+
+	docker $dockopts inspect $port | grep 'Running\":.*true' > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		docker $dockopts stop -t=10 $port > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			docker_log "Failed to stop $port"
+			fence_done 1
+		fi
+	fi
+}
+
+case $action in 
+	metadata) metadata;;
+
+	list)
+	# TODO docker list container names
+	# 0 success
+	# 1 failure
+	docker ps -a | awk '{print $NF}' | sed "s/^NAMES$//g"
+	if [ $? -eq 0 ]; then
+		fence_done 0
+	fi
+	fence_done 1
+	;;
+
+	monitor)
+	# TODO check connectivity to docker daemon
+	# 0 device is reachable
+	# 1 unable to contact device
+	docker $dockopts ps > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		fence_done 0
+	fi
+	fence_done 1
+	;;
+
+	status)
+	# TODO
+	# 0 if container is on
+	# 1 if container can not be contacted or unknown
+	# 2 if container is off
+	docker $dockopts inspect $port | grep 'Running\":.*true' > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		fence_done 0
+	fi
+	docker $dockopts inspect $port | grep 'Running\":.*false' > /dev/null 2>&1
+	if [ $? -eq 0 ]; then
+		fence_done 2
+	fi
+	fence_done 1
+	;;
+
+	reboot)
+	# TODO 0 if success
+	#      1 if failure
+	fence_off
+	fence_on
+	;;
+
+	start)
+	# TODO 0 successful
+	#      1 failure
+	fence_on
+	;;
+
+	stop)
+	# TODO 0 successful
+	#      1 failure
+	fence_off
+	;;
+
+	*) docker_log "Unknown action: $action"; fence_done 1;;
+esac
+
+fence_done $?
