@@ -392,16 +392,6 @@ services_os_action_execute(svc_action_t * op, gboolean synchronous)
         return FALSE;
     }
 
-    if (synchronous) {
-        sigemptyset(&mask);
-        sigaddset(&mask, SIGCHLD);
-        sigemptyset(&old_mask);
-
-        if (sigprocmask(SIG_BLOCK, &mask, &old_mask) < 0) {
-            crm_perror(LOG_ERR, "sigprocmask() failed");
-        }
-    }
-
     op->pid = fork();
     switch (op->pid) {
         case -1:
@@ -508,6 +498,14 @@ services_os_action_execute(svc_action_t * op, gboolean synchronous)
         struct pollfd fds[3];
         int wait_rc = 0;
 
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGCHLD);
+        sigemptyset(&old_mask);
+
+        if (pthread_sigmask(SIG_BLOCK, &mask, &old_mask) < 0) {
+            crm_perror(LOG_ERR, "sigprocmask() failed");
+        }
+
         sfd = signalfd(-1, &mask, SFD_NONBLOCK);
         if (sfd < 0) {
             crm_perror(LOG_ERR, "signalfd() failed");
@@ -545,7 +543,7 @@ services_os_action_execute(svc_action_t * op, gboolean synchronous)
 
                     s = read(sfd, &fdsi, sizeof(struct signalfd_siginfo));
                     if (s != sizeof(struct signalfd_siginfo)) {
-                        crm_perror(LOG_ERR, "Read from signal fd %d failed", sfd);
+                        crm_perror(LOG_ERR, "Read from signal fd %d failed, agent %s %s", sfd, op->standard, op->agent);
 
                     } else if (fdsi.ssi_signo == SIGCHLD) {
                         wait_rc = waitpid(op->pid, &status, WNOHANG);
@@ -623,7 +621,7 @@ services_os_action_execute(svc_action_t * op, gboolean synchronous)
         close(sfd);
 
         if (sigismember(&old_mask, SIGCHLD) == 0) {
-            if (sigprocmask(SIG_UNBLOCK, &mask, NULL) < 0) {
+            if (pthread_sigmask(SIG_UNBLOCK, &mask, NULL) < 0) {
                 crm_perror(LOG_ERR, "sigprocmask() to unblocked failed");
             }
         }
