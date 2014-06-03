@@ -1963,7 +1963,6 @@ attrd_update_delegate(crm_ipc_t * ipc, char command, const char *host, const cha
 
     if (ipc == NULL && local_ipc == NULL) {
         local_ipc = crm_ipc_new(T_ATTRD, 0);
-        flags |= crm_ipc_client_response;
         connected = FALSE;
     }
 
