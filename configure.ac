@@ -1831,10 +1831,6 @@ attrd/Makefile							\
 crmd/Makefile							\
 pengine/Makefile						\
 	pengine/regression.core.sh				\
-doc/Makefile							\
-	doc/Pacemaker_Explained/publican.cfg			\
-	doc/Clusters_from_Scratch/publican.cfg			\
-	doc/Pacemaker_Remote/publican.cfg			\
 include/Makefile						\
 	include/crm/Makefile					\
 		include/crm/cib/Makefile			\

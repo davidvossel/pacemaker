@@ -24,7 +24,7 @@ MAINTAINERCLEANFILES    = Makefile.in aclocal.m4 configure DRF/config-h.in \
                         DRF/stamp-h.in libtool.m4 ltdl.m4 libltdl.tar
 
 CORE	= $(LIBLTDL_DIR) replace include lib mcp attrd pengine cib crmd fencing lrmd tools xml
-SUBDIRS	= $(CORE) cts extra doc
+SUBDIRS	= $(CORE) cts extra
 
 doc_DATA = AUTHORS COPYING COPYING.LIB
 noinst_PROGRAMS = scratch
