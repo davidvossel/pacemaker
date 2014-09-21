@@ -591,6 +591,7 @@ mainloop_add_ipc_server(const char *name, enum qb_ipc_type type,
 
 #ifdef HAVE_IPCS_GET_BUFFER_SIZE
     /* All clients should use at least ipc_buffer_max as their buffer size */
+    crm_notice("VOSSEL - ENFORCING IPC SIZE");
     qb_ipcs_enforce_buffer_size(server, crm_ipc_default_buffer_size());
 #endif
 
